@@ -5,9 +5,11 @@ from typing import Optional
 class Settings(BaseSettings):
     ENVIRONMENT: str = "development"
     
-    # Anthropic API
+    # AI API Keys
     ANTHROPIC_API_KEY: str = ""
+    GEMINI_API_KEY: str = ""
     CLAUDE_MODEL: str = "claude-sonnet-4-6"
+    GEMINI_MODEL: str = "gemini-2.5-flash"
     
     # Database
     DATABASE_URL: str = "sqlite:///./tickets.db"

@@ -7,14 +7,22 @@ from backend.core.config import get_settings
 from backend.models.schemas import TriageResult
 from backend.models.ticket import TicketPriority, TicketCategory
 
+try:
+    from google import genai
+    from google.genai import types
+    has_genai = True
+except ImportError:
+    has_genai = False
+
 settings = get_settings()
 logger = logging.getLogger(__name__)
 
-# Initialize client. The API key must be provided in settings.
+# Initialize clients. The API key must be provided in settings.
 anthropic_client = Anthropic(api_key=settings.ANTHROPIC_API_KEY) if settings.ANTHROPIC_API_KEY else None
+gemini_client = genai.Client(api_key=settings.GEMINI_API_KEY) if (has_genai and settings.GEMINI_API_KEY) else None
 
 def extract_json(text: str) -> str:
-    """Helper to extract JSON block from Claude's response if it wraps it in markdown"""
+    """Helper to extract JSON block from AI's response if it wraps it in markdown"""
     match = re.search(r'```(?:json)?\s*(.*?)\s*```', text, re.DOTALL)
     if match:
         return match.group(1)
@@ -22,11 +30,11 @@ def extract_json(text: str) -> str:
 
 def run_triage(title: str, description: str, submitter_email: str) -> TriageResult:
     """
-    Uses Claude to automatically triage an incoming ticket.
+    Uses Claude or Gemini to automatically triage an incoming ticket.
     Returns a structured TriageResult.
     """
-    if not anthropic_client:
-        logger.warning("Anthropic API Key not set. Returning fallback triage result.")
+    if not anthropic_client and not gemini_client:
+        logger.warning("No AI API Key set. Returning fallback triage result.")
         return _get_fallback_triage()
 
     system_prompt = (
@@ -68,17 +76,28 @@ Return ONLY this exact JSON structure:
 """
 
     try:
-        response = anthropic_client.messages.create(
-            model=settings.CLAUDE_MODEL,
-            max_tokens=1024,
-            system=system_prompt,
-            messages=[
-                {"role": "user", "content": user_prompt}
-            ],
-            temperature=0.1
-        )
-        
-        content = response.content[0].text
+        if gemini_client:
+            response = gemini_client.models.generate_content(
+                model=settings.GEMINI_MODEL,
+                contents=[system_prompt + "\n\n" + user_prompt],
+                config=types.GenerateContentConfig(
+                    temperature=0.1,
+                    max_output_tokens=1024,
+                )
+            )
+            content = response.text
+        else:
+            response = anthropic_client.messages.create(
+                model=settings.CLAUDE_MODEL,
+                max_tokens=1024,
+                system=system_prompt,
+                messages=[
+                    {"role": "user", "content": user_prompt}
+                ],
+                temperature=0.1
+            )
+            content = response.content[0].text
+            
         json_str = extract_json(content)
         parsed_json = json.loads(json_str)
         
@@ -86,7 +105,7 @@ Return ONLY this exact JSON structure:
         return TriageResult(**parsed_json)
         
     except Exception as e:
-        logger.error(f"Failed to triage ticket via Claude: {e}")
+        logger.error(f"Failed to triage ticket via AI: {e}")
         return _get_fallback_triage()
 
 def _get_fallback_triage() -> TriageResult:
@@ -104,8 +123,8 @@ def ask_tickets(question: str, ticket_contexts: List[str]) -> Tuple[str, List[in
     """
     Answers a user question based on historical ticket context.
     """
-    if not anthropic_client:
-        return "Anthropic API Key not set. Cannot perform search.", []
+    if not anthropic_client and not gemini_client:
+        return "AI API Key not set. Cannot perform search.", []
         
     context_text = "\n\n".join(ticket_contexts)
     
@@ -118,16 +137,27 @@ def ask_tickets(question: str, ticket_contexts: List[str]) -> Tuple[str, List[in
     user_prompt = f"Ticket Contexts:\n{context_text}\n\nQuestion: {question}"
 
     try:
-        response = anthropic_client.messages.create(
-            model=settings.CLAUDE_MODEL,
-            max_tokens=1024,
-            system=system_prompt,
-            messages=[
-                {"role": "user", "content": user_prompt}
-            ],
-            temperature=0.0
-        )
-        answer = response.content[0].text
+        if gemini_client:
+            response = gemini_client.models.generate_content(
+                model=settings.GEMINI_MODEL,
+                contents=[system_prompt + "\n\n" + user_prompt],
+                config=types.GenerateContentConfig(
+                    temperature=0.0,
+                    max_output_tokens=1024,
+                )
+            )
+            answer = response.text
+        else:
+            response = anthropic_client.messages.create(
+                model=settings.CLAUDE_MODEL,
+                max_tokens=1024,
+                system=system_prompt,
+                messages=[
+                    {"role": "user", "content": user_prompt}
+                ],
+                temperature=0.0
+            )
+            answer = response.content[0].text
         
         # Extract referenced ticket IDs via regex (e.g., #123)
         referenced_ids = [int(match.group(1)) for match in re.finditer(r'#(\d+)', answer)]
@@ -136,14 +166,14 @@ def ask_tickets(question: str, ticket_contexts: List[str]) -> Tuple[str, List[in
         
         return answer, referenced_ids
     except Exception as e:
-        logger.error(f"Failed to answer question via Claude: {e}")
+        logger.error(f"Failed to answer question via AI: {e}")
         return "Sorry, I encountered an error while trying to answer your question.", []
 
 def generate_weekly_digest(ticket_stats: Dict[str, Any]) -> str:
     """
     Generates a readable weekly summary from a stats dictionary.
     """
-    if not anthropic_client:
+    if not anthropic_client and not gemini_client:
         return "AI digest unavailable. API Key not configured."
         
     system_prompt = "You are a senior IT manager writing a concise, professional weekly digest for your team."
@@ -153,16 +183,27 @@ def generate_weekly_digest(ticket_stats: Dict[str, Any]) -> str:
     )
 
     try:
-        response = anthropic_client.messages.create(
-            model=settings.CLAUDE_MODEL,
-            max_tokens=500,
-            system=system_prompt,
-            messages=[
-                {"role": "user", "content": user_prompt}
-            ],
-            temperature=0.4
-        )
-        return response.content[0].text.strip()
+        if gemini_client:
+            response = gemini_client.models.generate_content(
+                model=settings.GEMINI_MODEL,
+                contents=[system_prompt + "\n\n" + user_prompt],
+                config=types.GenerateContentConfig(
+                    temperature=0.4,
+                    max_output_tokens=500,
+                )
+            )
+            return response.text.strip()
+        else:
+            response = anthropic_client.messages.create(
+                model=settings.CLAUDE_MODEL,
+                max_tokens=500,
+                system=system_prompt,
+                messages=[
+                    {"role": "user", "content": user_prompt}
+                ],
+                temperature=0.4
+            )
+            return response.content[0].text.strip()
     except Exception as e:
-        logger.error(f"Failed to generate digest via Claude: {e}")
+        logger.error(f"Failed to generate digest via AI: {e}")
         return "Digest generation failed."
