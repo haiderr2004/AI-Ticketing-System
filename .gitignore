@@ -1,0 +1,34 @@
+# Python cache and bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+venv/
+.venv/
+env/
+.env/
+
+# Secrets
+.env
+
+# Database files
+*.db
+*.sqlite3
+
+# ChromaDB local storage
+chroma_db/
+
+# Node/Frontend
+node_modules/
+dist/
+
+# Testing
+.pytest_cache/
+
+# IDE config
+.vscode/
+.idea/
+
+# Logs
+*.log

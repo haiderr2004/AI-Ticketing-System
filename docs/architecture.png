@@ -1,0 +1,53 @@
+digraph "AI Ticketing System Architecture" {
+	graph [fontcolor="#2D3436" fontname="Sans-Serif" fontsize=15 label="AI Ticketing System Architecture" nodesep=0.60 pad=2.0 rankdir=LR ranksep=0.75 splines=ortho]
+	node [fixedsize=true fontcolor="#2D3436" fontname="Sans-Serif" fontsize=13 height=1.4 imagescale=true labelloc=b shape=box style=rounded width=1.4]
+	edge [color="#7B8894"]
+	subgraph "cluster_Clients & Input Sources" {
+		graph [bgcolor="#E5F5FD" fontname="Sans-Serif" fontsize=12 label="Clients & Input Sources" labeljust=l pencolor="#AEB6BE" rankdir=LR shape=box style=rounded]
+		"1305fdddc9594d608235b83cf776fdf4" [label="Web Form / Dashboard" height=1.9 image="c:\Users\Haide\Documents\P1-Automated Ticketing System\ai-ticketing-system\venv\lib\site-packages\resources/programming/framework\react.png" shape=none]
+		"83d9117e703e48b99b7f196c0941042e" [label="Email (IMAP)" height=1.9 image="c:\Users\Haide\Documents\P1-Automated Ticketing System\ai-ticketing-system\venv\lib\site-packages\resources/onprem/compute\server.png" shape=none]
+		"95705522d2e845a08732cbf56ed160c7" [label="Slack Commands" height=1.9 image="c:\Users\Haide\Documents\P1-Automated Ticketing System\ai-ticketing-system\venv\lib\site-packages\resources/saas/chat\slack.png" shape=none]
+		"6c990e500d8c4f5cb573c239c04448c1" [label="GitHub Webhooks" height=1.9 image="c:\Users\Haide\Documents\P1-Automated Ticketing System\ai-ticketing-system\venv\lib\site-packages\resources/onprem/compute\server.png" shape=none]
+	}
+	"1b9ece6c726c4eb0b71dcfa4d7b5421b" -> e8cdd532efb4417bb1fc30de1a7a2fe4 [color=dashed dir=none fontcolor="#2D3436" fontname="Sans-Serif" fontsize=13]
+	subgraph "cluster_Docker Compose Environment" {
+		graph [bgcolor="#E5F5FD" fontname="Sans-Serif" fontsize=12 label="Docker Compose Environment" labeljust=l pencolor="#AEB6BE" rankdir=LR shape=box style=rounded]
+		subgraph "cluster_Frontend (React + Vite)" {
+			graph [bgcolor="#EBF3E7" fontname="Sans-Serif" fontsize=12 label="Frontend (React + Vite)" labeljust=l pencolor="#AEB6BE" rankdir=LR shape=box style=rounded]
+			f375c34c418a48478f9133a1876cbb4d [label="Frontend App" height=1.9 image="c:\Users\Haide\Documents\P1-Automated Ticketing System\ai-ticketing-system\venv\lib\site-packages\resources/onprem/network\nginx.png" shape=none]
+		}
+		subgraph "cluster_Backend (FastAPI)" {
+			graph [bgcolor="#EBF3E7" fontname="Sans-Serif" fontsize=12 label="Backend (FastAPI)" labeljust=l pencolor="#AEB6BE" rankdir=LR shape=box style=rounded]
+			"1b9ece6c726c4eb0b71dcfa4d7b5421b" [label="API Server" height=1.9 image="c:\Users\Haide\Documents\P1-Automated Ticketing System\ai-ticketing-system\venv\lib\site-packages\resources/programming/framework\fastapi.png" shape=none]
+			e8cdd532efb4417bb1fc30de1a7a2fe4 [label="Background Tasks
+(APScheduler & Pipelines)" height=2.3 image="c:\Users\Haide\Documents\P1-Automated Ticketing System\ai-ticketing-system\venv\lib\site-packages\resources/programming/language\python.png" shape=none]
+		}
+		subgraph "cluster_Data Storage" {
+			graph [bgcolor="#EBF3E7" fontname="Sans-Serif" fontsize=12 label="Data Storage" labeljust=l pencolor="#AEB6BE" rankdir=LR shape=box style=rounded]
+			"858fe2ad824647c58892e838d5a1846d" [label="PostgreSQL (Relational)" height=1.9 image="c:\Users\Haide\Documents\P1-Automated Ticketing System\ai-ticketing-system\venv\lib\site-packages\resources/onprem/database\postgresql.png" shape=none]
+			add813480e474f63adf50d413d090f0a [label="ChromaDB (Vector)" height=1.9 image="c:\Users\Haide\Documents\P1-Automated Ticketing System\ai-ticketing-system\venv\lib\site-packages\resources/onprem/compute\server.png" shape=none]
+		}
+	}
+	subgraph "cluster_External APIs" {
+		graph [bgcolor="#E5F5FD" fontname="Sans-Serif" fontsize=12 label="External APIs" labeljust=l pencolor="#AEB6BE" rankdir=LR shape=box style=rounded]
+		"590306c257db4a55bd8ab48f82d223fe" [label="Anthropic Claude API
+(LLM & Triage)" height=2.3 image="c:\Users\Haide\Documents\P1-Automated Ticketing System\ai-ticketing-system\venv\lib\site-packages\resources/onprem/compute\server.png" shape=none]
+		"137fb7ea52054c7586d68e785f910005" [label="Slack Webhooks
+(Alerts)" height=2.3 image="c:\Users\Haide\Documents\P1-Automated Ticketing System\ai-ticketing-system\venv\lib\site-packages\resources/saas/chat\slack.png" shape=none]
+		"21c43cd42674413596fa15b92a9eeba1" [label="SMTP
+(Email Replies)" height=2.3 image="c:\Users\Haide\Documents\P1-Automated Ticketing System\ai-ticketing-system\venv\lib\site-packages\resources/onprem/compute\server.png" shape=none]
+	}
+	"1305fdddc9594d608235b83cf776fdf4" -> "1b9ece6c726c4eb0b71dcfa4d7b5421b" [dir=forward fontcolor="#2D3436" fontname="Sans-Serif" fontsize=13]
+	f375c34c418a48478f9133a1876cbb4d -> "1b9ece6c726c4eb0b71dcfa4d7b5421b" [dir=forward fontcolor="#2D3436" fontname="Sans-Serif" fontsize=13]
+	"83d9117e703e48b99b7f196c0941042e" -> "1b9ece6c726c4eb0b71dcfa4d7b5421b" [dir=forward fontcolor="#2D3436" fontname="Sans-Serif" fontsize=13]
+	"95705522d2e845a08732cbf56ed160c7" -> "1b9ece6c726c4eb0b71dcfa4d7b5421b" [dir=forward fontcolor="#2D3436" fontname="Sans-Serif" fontsize=13]
+	"6c990e500d8c4f5cb573c239c04448c1" -> "1b9ece6c726c4eb0b71dcfa4d7b5421b" [dir=forward fontcolor="#2D3436" fontname="Sans-Serif" fontsize=13]
+	"1b9ece6c726c4eb0b71dcfa4d7b5421b" -> e8cdd532efb4417bb1fc30de1a7a2fe4 [dir=forward fontcolor="#2D3436" fontname="Sans-Serif" fontsize=13]
+	e8cdd532efb4417bb1fc30de1a7a2fe4 -> "590306c257db4a55bd8ab48f82d223fe" [label="Analyze & Triage" dir=forward fontcolor="#2D3436" fontname="Sans-Serif" fontsize=13]
+	e8cdd532efb4417bb1fc30de1a7a2fe4 -> "137fb7ea52054c7586d68e785f910005" [label=Alerts dir=forward fontcolor="#2D3436" fontname="Sans-Serif" fontsize=13]
+	e8cdd532efb4417bb1fc30de1a7a2fe4 -> "21c43cd42674413596fa15b92a9eeba1" [label=Replies dir=forward fontcolor="#2D3436" fontname="Sans-Serif" fontsize=13]
+	"1b9ece6c726c4eb0b71dcfa4d7b5421b" -> "858fe2ad824647c58892e838d5a1846d" [label="Read/Write" dir=forward fontcolor="#2D3436" fontname="Sans-Serif" fontsize=13]
+	e8cdd532efb4417bb1fc30de1a7a2fe4 -> "858fe2ad824647c58892e838d5a1846d" [label="Read/Write" dir=forward fontcolor="#2D3436" fontname="Sans-Serif" fontsize=13]
+	e8cdd532efb4417bb1fc30de1a7a2fe4 -> add813480e474f63adf50d413d090f0a [label="Semantic Search" dir=forward fontcolor="#2D3436" fontname="Sans-Serif" fontsize=13]
+	"1b9ece6c726c4eb0b71dcfa4d7b5421b" -> add813480e474f63adf50d413d090f0a [label="Semantic Search" dir=forward fontcolor="#2D3436" fontname="Sans-Serif" fontsize=13]
+}

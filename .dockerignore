@@ -1,0 +1,28 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+env/
+.env/
+
+# Node
+node_modules/
+dist/
+
+# Database & Storage
+*.db
+*.sqlite3
+chroma_db/
+
+# IDE
+.vscode/
+.idea/
+
+# Environment files
+.env

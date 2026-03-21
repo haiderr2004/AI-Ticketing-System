@@ -1,0 +1,19 @@
+{
+  "$schema": "https://railway.app/railway.schema.json",
+  "services": {
+    "backend": {
+      "builder": "dockerfile",
+      "dockerfilePath": "Dockerfile.backend",
+      "port": 8000,
+      "healthcheckPath": "/health",
+      "env": {
+        "DATABASE_URL": "${{ Postgres.DATABASE_URL }}"
+      }
+    },
+    "frontend": {
+      "builder": "dockerfile",
+      "dockerfilePath": "Dockerfile.frontend",
+      "port": 80
+    }
+  }
+}

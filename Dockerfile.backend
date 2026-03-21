@@ -1,0 +1,29 @@
+FROM python:3.11-slim
+
+# Create a non-root user with a home directory
+RUN groupadd -r appuser && useradd -r -m -g appuser appuser
+
+WORKDIR /app
+
+# Install dependencies first (for layer caching)
+COPY backend/requirements.txt .
+RUN pip install --default-timeout=1000 -r requirements.txt
+
+# Copy the rest of the application
+COPY backend/ ./backend/
+# Also need to copy alembic folder if running migrations from container
+# but instructions say default command is uvicorn
+COPY backend/alembic.ini .
+
+# Create chroma_db directory and set ownership
+RUN mkdir -p /app/chroma_db && chown -R appuser:appuser /app
+
+# Switch to non-root user
+USER appuser
+
+EXPOSE 8000
+
+ENV PYTHONPATH=/app
+ENV HF_HOME=/home/appuser/.cache/huggingface
+
+CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000"]
