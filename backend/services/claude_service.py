@@ -8,8 +8,8 @@ from backend.models.schemas import TriageResult
 from backend.models.ticket import TicketPriority, TicketCategory
 
 try:
-    from google import genai
-    from google.genai import types
+    from google import genai  # type: ignore
+    from google.genai import types  # type: ignore
     has_genai = True
 except ImportError:
     has_genai = False
@@ -87,7 +87,7 @@ Return ONLY this exact JSON structure:
             )
             content = response.text
         else:
-            response = anthropic_client.messages.create(
+            response = anthropic_client.messages.create(  # type: ignore
                 model=settings.CLAUDE_MODEL,
                 max_tokens=1024,
                 system=system_prompt,
@@ -148,7 +148,7 @@ def ask_tickets(question: str, ticket_contexts: List[str]) -> Tuple[str, List[in
             )
             answer = response.text
         else:
-            response = anthropic_client.messages.create(
+            response = anthropic_client.messages.create(  # type: ignore
                 model=settings.CLAUDE_MODEL,
                 max_tokens=1024,
                 system=system_prompt,
@@ -194,7 +194,7 @@ def generate_weekly_digest(ticket_stats: Dict[str, Any]) -> str:
             )
             return response.text.strip()
         else:
-            response = anthropic_client.messages.create(
+            response = anthropic_client.messages.create(  # type: ignore
                 model=settings.CLAUDE_MODEL,
                 max_tokens=500,
                 system=system_prompt,
