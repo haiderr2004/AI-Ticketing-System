@@ -3,16 +3,16 @@ import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { formatDistanceToNow } from 'date-fns';
 import { getTicket, updateTicket, retriageTicket, sendTicketReply } from '../api/client';
-import { Mail, Monitor, MessageSquare, Code, Github, AlertTriangle } from 'lucide-react';
+import { Mail, Monitor, MessageSquare, Code, Github, AlertTriangle, Sparkles, ChevronLeft } from 'lucide-react';
 
 const SourceIcon = ({ source }) => {
   switch (source) {
-    case 'email': return <Mail size={14} className="text-gray-500" />;
-    case 'web_form': return <Monitor size={14} className="text-gray-500" />;
-    case 'slack': return <MessageSquare size={14} className="text-gray-500" />;
-    case 'api': return <Code size={14} className="text-gray-500" />;
-    case 'github': return <Github size={14} className="text-gray-500" />;
-    default: return <Monitor size={14} className="text-gray-500" />;
+    case 'email': return <Mail size={16} className="text-gray-400" />;
+    case 'web_form': return <Monitor size={16} className="text-gray-400" />;
+    case 'slack': return <MessageSquare size={16} className="text-gray-400" />;
+    case 'api': return <Code size={16} className="text-gray-400" />;
+    case 'github': return <Github size={16} className="text-gray-400" />;
+    default: return <Monitor size={16} className="text-gray-400" />;
   }
 };
 
@@ -26,7 +26,7 @@ export default function TicketDetail() {
   const { data: ticket, isLoading, error } = useQuery({
     queryKey: ['ticket', id],
     queryFn: () => getTicket(id),
-    refetchInterval: (data) => (data?.triage_completed_at ? false : 3000), // Auto-refresh if not triaged yet
+    refetchInterval: (data) => (data?.triage_completed_at ? false : 3000),
   });
 
   useEffect(() => {
@@ -52,8 +52,21 @@ export default function TicketDetail() {
     onSuccess: () => queryClient.invalidateQueries(['ticket', id]),
   });
 
-  if (isLoading) return <div className="p-10 text-gray-500 text-center animate-pulse">Loading ticket #{id}...</div>;
-  if (error) return <div className="p-10 text-red-500 text-center border border-red-200 bg-red-50 rounded-lg">Failed to load ticket #{id}. It may not exist.</div>;
+  if (isLoading) return (
+    <div className="p-8">
+      <div className="animate-pulse flex space-x-4">
+        <div className="flex-1 space-y-6 py-1">
+          <div className="h-6 bg-gray-200 rounded w-1/4"></div>
+          <div className="space-y-3">
+            <div className="h-4 bg-gray-200 rounded"></div>
+            <div className="h-4 bg-gray-200 rounded w-5/6"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  if (error) return <div className="p-8 text-red-500 font-medium bg-red-50 rounded-2xl mx-8 mt-8 border border-red-200">Failed to load ticket #{id}.</div>;
   if (!ticket) return null;
 
   const handleStatusSave = () => {
@@ -74,179 +87,217 @@ export default function TicketDetail() {
   };
 
   return (
-    <div className="flex flex-col gap-5">
-      <div className="flex items-center gap-2 mb-1">
-        <span className="font-mono text-sm text-gray-500">#{ticket.id}</span>
-        <h2 className="text-lg font-semibold text-gray-900 tracking-tight">{ticket.title}</h2>
-      </div>
+    <div className="flex flex-col min-h-0 h-full bg-white overflow-y-auto p-8 relative">
+      <Link to="/tickets" className="inline-flex items-center gap-2 text-theme-textMuted hover:text-theme-textMain font-medium text-sm mb-6 w-max">
+        <ChevronLeft size={16} /> Back to Tickets
+      </Link>
 
-      <div className="detail-meta">
-        <span className={`badge ${ticket.priority}`}>{ticket.priority || 'unassigned'}</span>
-        <span className={`badge ${ticket.category}`}>{ticket.category || 'unclassified'}</span>
-        <span className={`badge ${ticket.status}`}>{ticket.status.replace('_', ' ')}</span>
-        <span className="meta-note flex items-center gap-1">
-          via <SourceIcon source={ticket.source} /> {ticket.source.replace('_', ' ')} &bull; 
-          {formatDistanceToNow(new Date(ticket.created_at), { addSuffix: true })} &bull; 
-          {ticket.submitter_name || 'Unknown'} ({ticket.submitter_email || 'No email'})
-        </span>
-      </div>
-
-      {ticket.is_duplicate && (
-        <div className="bg-yellow-50 border border-yellow-200 p-3 rounded-lg flex items-center gap-2 text-yellow-800 text-sm">
-          <AlertTriangle size={16} />
-          <strong>Duplicate detected</strong> — similar to ticket <Link to={`/tickets/${ticket.duplicate_of_id}`} className="underline">#{ticket.duplicate_of_id}</Link> 
-          {ticket.similarity_score && ` (${(ticket.similarity_score * 100).toFixed(0)}% match)`}.
-        </div>
-      )}
-
-      <div className="two-col items-start">
-        {/* Left Column */}
-        <div className="flex flex-col gap-4 w-full">
-          <div>
-            <div className="section-head">Description</div>
-            <div className="desc-box whitespace-pre-wrap">{ticket.description}</div>
-          </div>
-          
-          <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm mt-4">
-            <div className="section-head">Status & assignment</div>
-            <div className="status-row mt-2">
-              <select 
-                className="filter-select bg-gray-50 border-gray-300"
-                value={localStatus}
-                onChange={e => setLocalStatus(e.target.value)}
-                disabled={updateMutation.isPending}
-              >
-                <option value="open">Open</option>
-                <option value="in_progress">In progress</option>
-                <option value="resolved">Resolved</option>
-                <option value="closed">Closed</option>
-                <option value="duplicate">Duplicate</option>
-              </select>
-              
-              <select 
-                className="filter-select bg-gray-50 border-gray-300"
-                value={localAssignee}
-                onChange={e => setLocalAssignee(e.target.value)}
-                disabled={updateMutation.isPending}
-              >
-                <option value="Unassigned">Unassigned</option>
-                <option value="Infrastructure Team">Infrastructure Team</option>
-                <option value="Security Team">Security Team</option>
-                <option value="Application Support">Application Support</option>
-                <option value="Database Team">Database Team</option>
-                <option value="Help Desk">Help Desk</option>
-                <option value="Management">Management</option>
-              </select>
-              
-              <button 
-                className="btn-primary ml-auto bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50"
-                onClick={handleStatusSave}
-                disabled={updateMutation.isPending || (localStatus === ticket.status && localAssignee === (ticket.assigned_to || 'Unassigned'))}
-              >
-                {updateMutation.isPending ? 'Saving...' : 'Save changes'}
-              </button>
+      <div className="flex flex-col gap-8 max-w-5xl">
+        <div className="flex items-start justify-between gap-4 flex-wrap border-b border-theme-border pb-6">
+          <div className="flex items-center gap-4">
+            <div className="w-14 h-14 rounded-full bg-theme-sidebar text-white flex items-center justify-center text-xl font-bold">
+              {ticket.submitter_name ? ticket.submitter_name.charAt(0).toUpperCase() : 'U'}
+            </div>
+            <div>
+              <h1 className="text-2xl font-semibold text-theme-textMain">{ticket.title}</h1>
+              <div className="flex items-center gap-2 text-sm text-theme-textMuted mt-1">
+                <span>{ticket.submitter_name || 'Unknown User'}</span>
+                <span>•</span>
+                <span>{formatDistanceToNow(new Date(ticket.created_at), { addSuffix: true })}</span>
+                <span>•</span>
+                <span className="flex items-center gap-1.5"><SourceIcon source={ticket.source} /> <span className="capitalize">{ticket.source.replace('_', ' ')}</span></span>
+              </div>
             </div>
           </div>
+          <div className="flex items-center gap-2">
+            <span className={`badge ${ticket.status}`}>{ticket.status.replace('_', ' ')}</span>
+            <span className={`badge ${ticket.priority}`}>{ticket.priority || 'Unassigned'}</span>
+            <span className={`badge ${ticket.category}`}>{ticket.category || 'Unclassified'}</span>
+          </div>
         </div>
 
-        {/* Right Column (AI Triage) */}
-        <div className="flex flex-col gap-4 w-full">
-          <div className="section-head flex items-center justify-between">
-            <span>AI Triage Results</span>
-            {!ticket.triage_completed_at && <span className="text-blue-500 animate-pulse normal-case font-normal text-xs">Triaging...</span>}
+        {ticket.is_duplicate && (
+          <div className="bg-orange-50 border border-orange-200 p-4 rounded-xl flex items-center gap-3 text-orange-800 text-sm">
+            <AlertTriangle size={18} className="text-orange-500" />
+            <div>
+              <strong>Duplicate detected</strong> — similar to ticket <Link to={`/tickets/${ticket.duplicate_of_id}`} className="underline font-medium hover:text-orange-900">#{ticket.duplicate_of_id}</Link> 
+              {ticket.similarity_score && ` (${(ticket.similarity_score * 100).toFixed(0)}% match)`}.
+            </div>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
+          
+          {/* Main Content Column */}
+          <div className="lg:col-span-2 flex flex-col gap-8">
+            <div className="flex flex-col">
+              <h3 className="text-sm font-semibold text-theme-textMain mb-3 uppercase tracking-wider text-gray-500">Description</h3>
+              <div className="text-sm text-theme-textMain leading-relaxed whitespace-pre-wrap bg-gray-50 p-6 rounded-2xl border border-theme-border">
+                {ticket.description}
+              </div>
+            </div>
+
+            <div className="flex flex-col">
+              <h3 className="text-sm font-semibold text-theme-textMain mb-3 flex items-center justify-between uppercase tracking-wider text-gray-500">
+                <span className="flex items-center gap-2"><Sparkles size={16} className="text-purple-500" /> AI Draft Reply</span>
+              </h3>
+              <div className="bg-white border border-theme-border rounded-2xl p-4 shadow-sm relative focus-within:border-theme-primary transition-colors">
+                <textarea 
+                  className="w-full text-sm text-theme-textMain resize-y outline-none min-h-[120px] p-2 leading-relaxed bg-transparent"
+                  value={draftReply}
+                  onChange={(e) => setDraftReply(e.target.value)}
+                  disabled={!ticket.triage_completed_at}
+                  placeholder="AI is preparing a draft..."
+                />
+                <div className="flex flex-wrap items-center justify-between gap-4 mt-4 pt-4 border-t border-gray-100">
+                  <div className="flex items-center gap-2">
+                    <button 
+                      className="bg-theme-primary hover:bg-theme-primaryHover text-white px-5 py-2.5 rounded-xl text-sm font-semibold transition-colors disabled:opacity-50"
+                      onClick={() => replyMutation.mutate()}
+                      disabled={replyMutation.isPending || !ticket.submitter_email || !draftReply || ticket.email_reply_sent}
+                    >
+                      {ticket.email_reply_sent ? 'Reply Sent' : replyMutation.isPending ? 'Sending...' : 'Send Reply'}
+                    </button>
+                    {draftReply !== ticket.ai_draft_reply && (
+                      <button 
+                        className="bg-gray-100 hover:bg-gray-200 text-theme-textMain px-4 py-2.5 rounded-xl text-sm font-medium transition-colors"
+                        onClick={handleDraftSave}
+                        disabled={updateMutation.isPending}
+                      >
+                        Save Draft
+                      </button>
+                    )}
+                  </div>
+                  {!ticket.submitter_email && (
+                    <span className="text-xs text-red-500 font-medium">Cannot send: Missing user email.</span>
+                  )}
+                </div>
+              </div>
+            </div>
           </div>
 
-          <div className="ai-panel relative">
-            {!ticket.triage_completed_at && (
-              <div className="absolute inset-0 bg-white/50 backdrop-blur-[1px] flex items-center justify-center z-10 rounded-md">
-                <div className="animate-spin h-5 w-5 border-2 border-blue-500 border-t-transparent rounded-full"></div>
-              </div>
-            )}
-            
-            <div className="ai-label">Summary</div>
-            <div className="ai-text mb-4">{ticket.ai_summary || 'Waiting for AI...'}</div>
-            
-            <div className="ai-label mt-4">Suggested assignee</div>
-            <div className="ai-text flex items-center justify-between bg-gray-50 p-2 rounded border border-gray-100">
-              <span className="font-medium">{ticket.ai_suggested_assignee || 'Waiting for AI...'}</span>
-              {ticket.ai_suggested_assignee && ticket.assigned_to !== ticket.ai_suggested_assignee && (
+          {/* Right Sidebar Column */}
+          <div className="flex flex-col gap-6">
+            <div className="bg-white border border-theme-border rounded-2xl p-5 shadow-soft">
+              <h3 className="text-sm font-semibold text-theme-textMain mb-4 uppercase tracking-wider text-gray-500">Assignment</h3>
+              <div className="flex flex-col gap-4">
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-medium text-theme-textMuted">Status</label>
+                  <select 
+                    className="w-full bg-gray-50 border border-theme-border rounded-lg px-3 py-2.5 text-sm text-theme-textMain outline-none focus:border-theme-primary transition-colors"
+                    value={localStatus}
+                    onChange={e => setLocalStatus(e.target.value)}
+                    disabled={updateMutation.isPending}
+                  >
+                    <option value="open">Open</option>
+                    <option value="in_progress">In progress</option>
+                    <option value="resolved">Resolved</option>
+                    <option value="closed">Closed</option>
+                    <option value="duplicate">Duplicate</option>
+                  </select>
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-medium text-theme-textMuted">Assigned To</label>
+                  <select 
+                    className="w-full bg-gray-50 border border-theme-border rounded-lg px-3 py-2.5 text-sm text-theme-textMain outline-none focus:border-theme-primary transition-colors"
+                    value={localAssignee}
+                    onChange={e => setLocalAssignee(e.target.value)}
+                    disabled={updateMutation.isPending}
+                  >
+                    <option value="Unassigned">Unassigned</option>
+                    <option value="Infrastructure Team">Infrastructure Team</option>
+                    <option value="Security Team">Security Team</option>
+                    <option value="Application Support">Application Support</option>
+                    <option value="Database Team">Database Team</option>
+                    <option value="Help Desk">Help Desk</option>
+                    <option value="Management">Management</option>
+                  </select>
+                </div>
                 <button 
-                  className="btn-ghost text-[10px] py-1 px-2 h-auto"
-                  onClick={handleAcceptAssignee}
-                  disabled={updateMutation.isPending}
+                  className="w-full bg-theme-sidebar hover:bg-theme-sidebarActive text-white py-2.5 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 mt-2"
+                  onClick={handleStatusSave}
+                  disabled={updateMutation.isPending || (localStatus === ticket.status && localAssignee === (ticket.assigned_to || 'Unassigned'))}
                 >
-                  Accept
+                  {updateMutation.isPending ? 'Saving...' : 'Update Details'}
                 </button>
-              )}
+              </div>
             </div>
 
-            {ticket.ai_confidence_score !== null && (
-              <div className="mt-4">
-                <div className="ai-label flex justify-between">
-                  <span>AI confidence</span>
-                  <span>{(ticket.ai_confidence_score * 100).toFixed(0)}%</span>
+            <div className="bg-purple-50/50 border border-purple-100 rounded-2xl p-5 relative overflow-hidden shadow-soft">
+              {!ticket.triage_completed_at && (
+                <div className="absolute inset-0 bg-white/60 backdrop-blur-sm flex items-center justify-center z-10">
+                  <div className="flex flex-col items-center gap-2 text-purple-600 font-medium text-sm">
+                    <div className="w-6 h-6 border-2 border-purple-500 border-t-transparent rounded-full animate-spin"></div>
+                    Running AI Analysis...
+                  </div>
                 </div>
-                <div className="confidence-bar">
-                  <div 
-                    className="confidence-fill bg-blue-500" 
-                    style={{ width: `${ticket.ai_confidence_score * 100}%` }}
-                  ></div>
+              )}
+              
+              <h3 className="text-sm font-semibold text-purple-900 mb-4 flex items-center gap-2">
+                <Sparkles size={16} /> AI Intelligence
+              </h3>
+              
+              <div className="flex flex-col gap-4">
+                <div>
+                  <div className="text-[11px] font-semibold text-purple-600 uppercase mb-1">Summary</div>
+                  <div className="text-sm text-purple-900 leading-relaxed">{ticket.ai_summary || 'Pending...'}</div>
+                </div>
+
+                <div>
+                  <div className="text-[11px] font-semibold text-purple-600 uppercase mb-1">Routing Recommendation</div>
+                  <div className="flex items-center justify-between bg-white border border-purple-100 px-3 py-2.5 rounded-lg text-sm text-purple-900 font-medium">
+                    {ticket.ai_suggested_assignee || 'Pending...'}
+                    {ticket.ai_suggested_assignee && ticket.assigned_to !== ticket.ai_suggested_assignee && (
+                      <button 
+                        className="text-[10px] font-bold uppercase tracking-wider bg-purple-100 text-purple-700 px-2.5 py-1 rounded hover:bg-purple-200 transition-colors"
+                        onClick={handleAcceptAssignee}
+                        disabled={updateMutation.isPending}
+                      >
+                        Apply
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {ticket.ai_confidence_score !== null && (
+                  <div>
+                    <div className="flex items-center justify-between text-[11px] font-semibold text-purple-600 uppercase mb-1.5">
+                      <span>Confidence Score</span>
+                      <span>{(ticket.ai_confidence_score * 100).toFixed(0)}%</span>
+                    </div>
+                    <div className="h-1.5 bg-purple-100 rounded-full overflow-hidden">
+                      <div className="h-full bg-purple-500 rounded-full" style={{ width: `${ticket.ai_confidence_score * 100}%` }}></div>
+                    </div>
+                  </div>
+                )}
+
+                {ticket.triage_reasoning && (
+                  <details className="mt-2 text-sm group">
+                    <summary className="text-purple-600 font-medium cursor-pointer hover:text-purple-800 transition-colors outline-none list-none flex items-center gap-1.5 text-xs">
+                      <span className="group-open:rotate-90 transition-transform">▸</span> View reasoning logic
+                    </summary>
+                    <div className="mt-2 p-3 bg-white border border-purple-100 rounded-lg text-xs text-purple-800 leading-relaxed">
+                      {ticket.triage_reasoning}
+                    </div>
+                  </details>
+                )}
+
+                <div className="pt-4 border-t border-purple-100 mt-2">
+                  <button 
+                    className="w-full text-xs font-semibold text-purple-600 hover:text-purple-800 transition-colors flex justify-center items-center gap-1.5"
+                    onClick={() => {
+                      if(window.confirm('Re-run AI analysis on this ticket? This will update the summary and draft.')) {
+                        retriageMutation.mutate();
+                      }
+                    }}
+                    disabled={retriageMutation.isPending || !ticket.triage_completed_at}
+                  >
+                    {retriageMutation.isPending ? 'Processing...' : '↻ Re-run Analysis'}
+                  </button>
                 </div>
               </div>
-            )}
-
-            {ticket.triage_reasoning && (
-              <details className="mt-4 text-xs">
-                <summary className="text-gray-500 cursor-pointer hover:text-gray-700 font-medium">View AI Reasoning</summary>
-                <div className="mt-2 text-gray-600 bg-gray-50 p-2 rounded border border-gray-100 leading-relaxed">
-                  {ticket.triage_reasoning}
-                </div>
-              </details>
-            )}
+            </div>
           </div>
-
-          <div className="section-head mt-2">AI draft reply</div>
-          <textarea 
-            className="draft-box w-full bg-yellow-50/30 border-yellow-200 focus:ring-yellow-500 focus:border-yellow-500 transition-colors"
-            value={draftReply}
-            onChange={(e) => setDraftReply(e.target.value)}
-            disabled={!ticket.triage_completed_at}
-          />
-          
-          <div className="action-row flex flex-wrap gap-2 items-center">
-            <button 
-              className="btn-primary bg-green-600 hover:bg-green-700 disabled:opacity-50"
-              onClick={() => replyMutation.mutate()}
-              disabled={replyMutation.isPending || !ticket.submitter_email || !draftReply || ticket.email_reply_sent}
-            >
-              {ticket.email_reply_sent ? 'Reply sent ✓' : replyMutation.isPending ? 'Sending...' : 'Send reply'}
-            </button>
-            
-            {draftReply !== ticket.ai_draft_reply && (
-              <button 
-                className="btn-ghost"
-                onClick={handleDraftSave}
-                disabled={updateMutation.isPending}
-              >
-                Save draft changes
-              </button>
-            )}
-            
-            <button 
-              className="btn-ghost ml-auto text-gray-500 hover:text-gray-900 border-gray-300"
-              onClick={() => {
-                if(window.confirm('This will overwrite current AI fields. Continue?')) {
-                  retriageMutation.mutate();
-                }
-              }}
-              disabled={retriageMutation.isPending || !ticket.triage_completed_at}
-            >
-              {retriageMutation.isPending ? 'Retriaging...' : 'Re-run triage'}
-            </button>
-          </div>
-          {!ticket.submitter_email && (
-            <div className="text-xs text-red-500 mt-1">Cannot send reply: No submitter email provided.</div>
-          )}
         </div>
       </div>
     </div>

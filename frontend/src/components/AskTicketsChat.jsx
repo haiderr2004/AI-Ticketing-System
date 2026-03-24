@@ -41,22 +41,24 @@ export default function AskTicketsChat() {
   }, [messages, askMutation.isPending]);
 
   return (
-    <div className="card flex flex-col h-[400px]">
-      <div className="card-title flex items-center gap-2">
-        <Sparkles size={14} className="text-purple-500" /> Ask your tickets
+    <div className="bg-white rounded-2xl border border-theme-border flex flex-col h-[400px] shadow-soft overflow-hidden">
+      <div className="border-b border-theme-border p-5 bg-gray-50/50 flex items-center justify-between flex-shrink-0">
+        <h2 className="text-lg font-semibold text-theme-textMain flex items-center gap-2">
+          <Sparkles size={18} className="text-purple-500" /> Ask your tickets
+        </h2>
       </div>
       
-      <div className="chat-area flex-1 overflow-y-auto mb-3 pr-2">
+      <div className="flex-1 overflow-y-auto p-6 space-y-4">
         {messages.map((m, idx) => (
-          <div key={idx} className={`chat-msg ${m.role === 'user' ? 'chat-q' : ''}`}>
-            <div className={`chat-bubble ${m.role === 'user' ? 'user' : 'ai'}`}>
+          <div key={idx} className={`flex flex-col ${m.role === 'user' ? 'items-end' : 'items-start'}`}>
+            <div className={`inline-block max-w-[85%] px-4 py-2.5 rounded-2xl text-sm leading-relaxed ${m.role === 'user' ? 'bg-theme-primary text-white rounded-tr-sm' : 'bg-gray-100 text-theme-textMain rounded-tl-sm border border-gray-200'}`}>
               {dangerouslySetText(m.text)}
             </div>
             {m.refs && m.refs.length > 0 && (
-              <div className="refs mt-1">
+              <div className="text-[11px] text-theme-textMuted mt-1.5 px-1">
                 Referenced: {m.refs.map((id, i) => (
                   <span key={id}>
-                    <Link to={`/tickets/${id}`} className="hover:underline text-blue-600">#{id}</Link>
+                    <Link to={`/tickets/${id}`} className="hover:underline text-theme-primary font-medium">#{id}</Link>
                     {i < m.refs.length - 1 ? ', ' : ''}
                   </span>
                 ))}
@@ -65,38 +67,39 @@ export default function AskTicketsChat() {
           </div>
         ))}
         {askMutation.isPending && (
-          <div className="chat-msg">
-            <div className="chat-bubble ai text-gray-400">Thinking...</div>
+          <div className="flex flex-col items-start">
+             <div className="inline-block px-4 py-2.5 rounded-2xl text-sm bg-gray-100 text-gray-500 rounded-tl-sm border border-gray-200 animate-pulse">
+               Thinking...
+             </div>
           </div>
         )}
         <div ref={chatEndRef} />
       </div>
 
-      <form onSubmit={handleSubmit} className="flex gap-2">
+      <form onSubmit={handleSubmit} className="p-4 border-t border-theme-border bg-white flex gap-3 flex-shrink-0">
         <input 
-          className="search-input" 
+          className="flex-1 bg-gray-50 border border-theme-border rounded-xl px-4 py-2.5 text-sm text-theme-textMain focus:outline-none focus:border-theme-primary transition-colors" 
           placeholder="Ask anything about your tickets..." 
           value={input}
           onChange={(e) => setInput(e.target.value)}
           disabled={askMutation.isPending}
+          autoComplete="off"
         />
         <button 
           type="submit" 
-          className="btn-primary flex items-center justify-center min-w-[40px]"
+          className="flex items-center justify-center w-12 bg-theme-sidebarActive hover:bg-theme-sidebar text-white rounded-xl transition-colors disabled:opacity-50"
           disabled={!input.trim() || askMutation.isPending}
         >
-          <Send size={14} />
+          <Send size={16} />
         </button>
       </form>
     </div>
   );
 }
 
-// Simple helper to safely format basic bolding that Claude might return
 function dangerouslySetText(text) {
-  // Replace **text** with <strong>text</strong>
   const html = text
-    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*\*(.*?)\*\*/g, '<strong class="font-bold">$1</strong>')
     .replace(/\n/g, '<br />');
   return <div dangerouslySetInnerHTML={{ __html: html }} />;
 }
