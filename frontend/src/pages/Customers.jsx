@@ -1,12 +1,13 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
 import { getTickets } from '../api/client';
-import { User, Mail, Calendar, Phone } from 'lucide-react';
+import { User, Mail, Calendar, ChevronLeft } from 'lucide-react';
 import { format } from 'date-fns';
+import TicketList from '../components/TicketList';
 
 export default function Customers() {
-  const navigate = useNavigate();
+  const [selectedCustomer, setSelectedCustomer] = useState(null);
+
   // We'll use the unique submitter_emails from tickets to construct a mock customer list
   const { data, isLoading } = useQuery({
     queryKey: ['tickets', { page: 1, size: 100 }],
@@ -36,6 +37,49 @@ export default function Customers() {
     return Array.from(uniqueMap.values());
   }, [data]);
 
+  // If a customer is selected, show their specific details and tickets
+  if (selectedCustomer) {
+    const customerTickets = data?.items?.filter(t => t.submitter_email === selectedCustomer.email) || [];
+
+    return (
+      <div className="flex flex-col h-full w-full bg-white">
+        <div className="p-8 pb-4 border-b border-theme-border">
+          <button 
+            onClick={() => setSelectedCustomer(null)}
+            className="flex items-center gap-2 text-theme-textMuted hover:text-theme-textMain font-medium text-sm mb-4 transition-colors w-max"
+          >
+            <ChevronLeft size={16} /> Back to Directory
+          </button>
+          
+          <div className="flex items-center gap-4">
+            <div className="w-16 h-16 rounded-full bg-theme-primary/10 text-theme-primary flex items-center justify-center font-bold text-2xl">
+              {selectedCustomer.name.charAt(0).toUpperCase()}
+            </div>
+            <div>
+              <h2 className="text-2xl font-bold text-theme-textMain tracking-tight">{selectedCustomer.name}</h2>
+              <div className="flex items-center gap-2 text-sm text-theme-textMuted mt-1">
+                <Mail size={14} /> {selectedCustomer.email}
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <div className="flex-1 p-8 overflow-y-auto bg-gray-50/30">
+          <h3 className="text-lg font-semibold text-theme-textMain mb-4">Submitted Tickets</h3>
+          <div className="bg-white border border-theme-border rounded-xl shadow-sm overflow-hidden">
+            <TicketList 
+              tickets={customerTickets}
+              isLoading={isLoading}
+              selectedTickets={[]}
+              onToggleSelect={() => {}}
+            />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Otherwise, show the directory grid
   return (
     <div className="flex h-full w-full bg-white p-8">
       <div className="flex-1 flex flex-col min-w-0 max-w-6xl mx-auto">
@@ -64,8 +108,8 @@ export default function Customers() {
             {customers.map(c => (
               <div 
                 key={c.email} 
-                className="bg-white border border-theme-border rounded-2xl p-6 shadow-soft hover:shadow-lg transition-shadow group cursor-pointer"
-                onClick={() => navigate(`/tickets?submitter_email=${encodeURIComponent(c.email)}`)}
+                className="bg-white border border-theme-border rounded-2xl p-6 shadow-soft hover:shadow-md hover:border-theme-primary/30 transition-all group cursor-pointer"
+                onClick={() => setSelectedCustomer(c)}
               >
                 <div className="flex items-start gap-4 mb-4">
                   <div className="w-12 h-12 rounded-full bg-theme-primary/10 text-theme-primary flex items-center justify-center font-bold text-lg">
