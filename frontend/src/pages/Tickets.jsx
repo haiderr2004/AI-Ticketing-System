@@ -1,13 +1,14 @@
 import { useState, useEffect } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, ChevronDown, Calendar as CalendarIcon } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronDown } from 'lucide-react';
 import { format } from 'date-fns';
-import { getTickets } from '../api/client';
+import { getTickets, deleteTicket } from '../api/client';
 import TicketList from '../components/TicketList';
 
 export default function Tickets() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const queryClient = useQueryClient();
   
   const initialPage = parseInt(searchParams.get('page')) || 1;
   const initialSearch = searchParams.get('search') || '';
@@ -23,6 +24,8 @@ export default function Tickets() {
   const [sortCol, setSortCol] = useState('created_at');
   const [sortDesc, setSortDesc] = useState(true);
   const [selectedDate, setSelectedDate] = useState(null);
+  
+  const [selectedTickets, setSelectedTickets] = useState([]);
 
   // Sync state to URL
   useEffect(() => {
@@ -47,6 +50,19 @@ export default function Tickets() {
       category: category !== 'All categories' ? category.toLowerCase().replace(' ', '_') : undefined,
     }),
     placeholderData: (prev) => prev,
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (ids) => {
+      // API currently takes one ID, so we loop (in a real app, backend supports bulk delete)
+      for (const id of ids) {
+        await deleteTicket(id);
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries(['tickets']);
+      setSelectedTickets([]);
+    }
   });
 
   const handleSort = (col) => {
@@ -84,6 +100,32 @@ export default function Tickets() {
     }
   };
 
+  const toggleSelectAll = () => {
+    if (selectedTickets.length === sortedItems.length && sortedItems.length > 0) {
+      setSelectedTickets([]);
+    } else {
+      setSelectedTickets(sortedItems.map(t => t.id));
+    }
+  };
+
+  const toggleSelect = (id) => {
+    if (selectedTickets.includes(id)) {
+      setSelectedTickets(selectedTickets.filter(tId => tId !== id));
+    } else {
+      setSelectedTickets([...selectedTickets, id]);
+    }
+  };
+
+  const handleDeleteSelected = () => {
+    if (selectedTickets.length === 0) return;
+    if (window.confirm(`Are you sure you want to delete ${selectedTickets.length} tickets?`)) {
+      deleteMutation.mutate(selectedTickets);
+    }
+  };
+
+  // Current day indicator
+  const today = new Date().getDate();
+
   return (
     <div className="flex h-full w-full bg-white">
       {/* Main List Area */}
@@ -92,19 +134,31 @@ export default function Tickets() {
         <div className="flex items-center justify-between mb-4 px-2">
           <div className="flex items-center gap-6">
             <label className="flex items-center gap-2 text-sm text-theme-textMain font-medium cursor-pointer">
-              <input type="checkbox" className="rounded border-gray-300 text-theme-primary focus:ring-theme-primary w-4 h-4" />
+              <input 
+                type="checkbox" 
+                className="rounded border-gray-300 text-theme-primary focus:ring-theme-primary w-4 h-4 cursor-pointer" 
+                checked={selectedTickets.length > 0 && selectedTickets.length === sortedItems.length}
+                onChange={toggleSelectAll}
+              />
               Select all
             </label>
-            <button className="text-sm font-medium text-theme-textMain hover:text-theme-textMain transition-colors">
-              Delete
+            <button 
+              className={`text-sm font-medium transition-colors ${selectedTickets.length > 0 ? 'text-red-500 hover:text-red-600' : 'text-gray-300 cursor-not-allowed'}`}
+              onClick={handleDeleteSelected}
+              disabled={selectedTickets.length === 0 || deleteMutation.isPending}
+            >
+              {deleteMutation.isPending ? 'Deleting...' : 'Delete'}
             </button>
-            <button className="flex items-center gap-1 text-sm font-medium text-theme-textMain hover:text-theme-textMain transition-colors">
-              Sort by: Date <ChevronDown size={14} className="text-gray-400" />
+            <button 
+              className="flex items-center gap-1 text-sm font-medium text-theme-textMain hover:text-theme-textMain transition-colors"
+              onClick={() => handleSort('created_at')}
+            >
+              Sort by: Date {sortCol === 'created_at' && (sortDesc ? <ChevronDown size={14} className="text-theme-primary" /> : <ChevronDown size={14} className="text-theme-primary rotate-180" />)}
             </button>
           </div>
           
           <div className="flex items-center gap-4 text-sm font-medium text-theme-textMain">
-            <span>1-10 of 200</span>
+            <span>{sortedItems.length > 0 ? `1-${sortedItems.length} of ${data?.total || 0}` : '0 of 0'}</span>
             <div className="flex gap-1">
               <button className="p-1 rounded-md text-gray-400 hover:bg-gray-100 transition-colors">
                 <ChevronLeft size={16} />
@@ -120,7 +174,8 @@ export default function Tickets() {
           <TicketList 
             tickets={sortedItems} 
             isLoading={isLoading} 
-            onSort={handleSort}
+            selectedTickets={selectedTickets}
+            onToggleSelect={toggleSelect}
           />
         </div>
       </div>
@@ -159,9 +214,10 @@ export default function Tickets() {
                     <div 
                       key={day} 
                       onClick={() => handleDateClick(day)}
-                      className={`rounded-full w-6 h-6 flex items-center justify-center mx-auto cursor-pointer transition-colors ${selectedDate === day ? 'bg-theme-primary text-white font-bold shadow-md shadow-theme-primary/30' : 'text-theme-textMain hover:bg-gray-100'}`}
+                      className={`relative rounded-full w-6 h-6 flex items-center justify-center mx-auto cursor-pointer transition-colors ${selectedDate === day ? 'bg-theme-primary text-white font-bold shadow-md shadow-theme-primary/30' : 'text-theme-textMain hover:bg-gray-100'}`}
                     >
                       {day}
+                      {today === day && selectedDate !== day && <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 bg-theme-primary rounded-full"></div>}
                     </div>
                   ))}
                   <div className="text-gray-300">1</div>
