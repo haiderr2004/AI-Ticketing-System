@@ -15,12 +15,14 @@ export default function Tickets() {
   const initialStatus = searchParams.get('status') || 'All statuses';
   const initialPriority = searchParams.get('priority') || 'All priorities';
   const initialCategory = searchParams.get('category') || 'All categories';
+  const initialSubmitterEmail = searchParams.get('submitter_email') || '';
   
   const [page, setPage] = useState(initialPage);
   const [search, setSearch] = useState(initialSearch);
   const [status, setStatus] = useState(initialStatus);
   const [priority, setPriority] = useState(initialPriority);
   const [category, setCategory] = useState(initialCategory);
+  const [submitterEmail, setSubmitterEmail] = useState(initialSubmitterEmail);
   const [sortCol, setSortCol] = useState('created_at');
   const [sortDesc, setSortDesc] = useState(true);
   const [selectedDate, setSelectedDate] = useState(null);
@@ -35,12 +37,13 @@ export default function Tickets() {
     if (status !== 'All statuses') params.set('status', status);
     if (priority !== 'All priorities') params.set('priority', priority);
     if (category !== 'All categories') params.set('category', category);
+    if (submitterEmail) params.set('submitter_email', submitterEmail);
     
     setSearchParams(params, { replace: true });
-  }, [page, search, status, priority, category, setSearchParams]);
+  }, [page, search, status, priority, category, submitterEmail, setSearchParams]);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['tickets', { page, search, status, priority, category }],
+    queryKey: ['tickets', { page, search, status, priority, category, submitterEmail }],
     queryFn: () => getTickets({
       page,
       size: 100, // Fetch more so we can filter by date locally for this demo
@@ -48,6 +51,7 @@ export default function Tickets() {
       status: status !== 'All statuses' ? status.toLowerCase() : undefined,
       priority: priority !== 'All priorities' ? priority.toLowerCase() : undefined,
       category: category !== 'All categories' ? category.toLowerCase().replace(' ', '_') : undefined,
+      submitter_email: submitterEmail || undefined,
     }),
     placeholderData: (prev) => prev,
   });
@@ -229,7 +233,7 @@ export default function Tickets() {
         
         {/* Bottom Action */}
         <div className="p-4 border-t border-theme-border flex justify-end">
-          <button onClick={() => { setCategory('All categories'); setStatus('All statuses'); setPriority('All priorities'); setSelectedDate(null); }} className="text-sm font-semibold text-theme-textMain hover:text-gray-600 transition-colors">Clear filters</button>
+          <button onClick={() => { setCategory('All categories'); setStatus('All statuses'); setPriority('All priorities'); setSelectedDate(null); setSubmitterEmail(''); }} className="text-sm font-semibold text-theme-textMain hover:text-gray-600 transition-colors">Clear filters</button>
         </div>
       </div>
     </div>

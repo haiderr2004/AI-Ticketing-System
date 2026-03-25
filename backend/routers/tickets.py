@@ -24,6 +24,7 @@ def get_tickets(
     priority_filter: Optional[str] = Query(None, alias="priority"),
     category_filter: Optional[str] = Query(None, alias="category"),
     source_filter: Optional[str] = Query(None, alias="source"),
+    submitter_email: Optional[str] = Query(None),
     search: Optional[str] = Query(None),
     db: Session = Depends(get_db)
 ):
@@ -37,6 +38,8 @@ def get_tickets(
         query = query.filter(Ticket.category == category_filter.lower())
     if source_filter and source_filter != "All sources":
         query = query.filter(Ticket.source == source_filter.lower().replace(" ", "_"))
+    if submitter_email:
+        query = query.filter(Ticket.submitter_email == submitter_email)
 
     if search:
         search_term = f"%{search}%"

@@ -1,10 +1,12 @@
 import React from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { getTickets } from '../api/client';
 import { User, Mail, Calendar, Phone } from 'lucide-react';
 import { format } from 'date-fns';
 
 export default function Customers() {
+  const navigate = useNavigate();
   // We'll use the unique submitter_emails from tickets to construct a mock customer list
   const { data, isLoading } = useQuery({
     queryKey: ['tickets', { page: 1, size: 100 }],
@@ -60,13 +62,17 @@ export default function Customers() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {customers.map(c => (
-              <div key={c.email} className="bg-white border border-theme-border rounded-2xl p-6 shadow-soft hover:shadow-lg transition-shadow group cursor-pointer">
+              <div 
+                key={c.email} 
+                className="bg-white border border-theme-border rounded-2xl p-6 shadow-soft hover:shadow-lg transition-shadow group cursor-pointer"
+                onClick={() => navigate(`/tickets?submitter_email=${encodeURIComponent(c.email)}`)}
+              >
                 <div className="flex items-start gap-4 mb-4">
                   <div className="w-12 h-12 rounded-full bg-theme-primary/10 text-theme-primary flex items-center justify-center font-bold text-lg">
                     {c.name.charAt(0).toUpperCase()}
                   </div>
                   <div className="flex flex-col min-w-0">
-                    <h3 className="text-base font-semibold text-theme-textMain truncate">{c.name}</h3>
+                    <h3 className="text-base font-semibold text-theme-textMain truncate group-hover:text-theme-primary transition-colors">{c.name}</h3>
                     <div className="flex items-center gap-1.5 text-xs text-theme-textMuted mt-0.5 truncate">
                       <Mail size={12} /> {c.email}
                     </div>
