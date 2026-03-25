@@ -41,7 +41,7 @@ export default function AskTicketsChat() {
   }, [messages, askMutation.isPending]);
 
   return (
-    <div className="bg-white rounded-2xl border border-theme-border flex flex-col h-[400px] shadow-soft overflow-hidden">
+    <div className="bg-white rounded-2xl border border-theme-border flex flex-col h-full min-h-[300px] shadow-soft overflow-hidden">
       <div className="border-b border-theme-border p-5 bg-gray-50/50 flex items-center justify-between flex-shrink-0">
         <h2 className="text-lg font-semibold text-theme-textMain flex items-center gap-2">
           <Sparkles size={18} className="text-purple-500" /> Ask your tickets

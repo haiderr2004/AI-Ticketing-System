@@ -10,9 +10,9 @@ export default function Tickets() {
   
   const initialPage = parseInt(searchParams.get('page')) || 1;
   const initialSearch = searchParams.get('search') || '';
-  const initialStatus = searchParams.get('status') || 'Open';
-  const initialPriority = searchParams.get('priority') || 'Urgent';
-  const initialCategory = searchParams.get('category') || 'Technical Support';
+  const initialStatus = searchParams.get('status') || 'All statuses';
+  const initialPriority = searchParams.get('priority') || 'All priorities';
+  const initialCategory = searchParams.get('category') || 'All categories';
   
   const [page, setPage] = useState(initialPage);
   const [search, setSearch] = useState(initialSearch);
@@ -21,6 +21,7 @@ export default function Tickets() {
   const [category, setCategory] = useState(initialCategory);
   const [sortCol, setSortCol] = useState('created_at');
   const [sortDesc, setSortDesc] = useState(true);
+  const [selectedDate, setSelectedDate] = useState(null);
 
   // Sync state to URL
   useEffect(() => {
@@ -38,7 +39,7 @@ export default function Tickets() {
     queryKey: ['tickets', { page, search, status, priority, category }],
     queryFn: () => getTickets({
       page,
-      size: 10,
+      size: 100, // Fetch more so we can filter by date locally for this demo
       search: search || undefined,
       status: status !== 'All statuses' ? status.toLowerCase() : undefined,
       priority: priority !== 'All priorities' ? priority.toLowerCase() : undefined,
@@ -56,7 +57,13 @@ export default function Tickets() {
     }
   };
 
-  const sortedItems = data?.items ? [...data.items].sort((a, b) => {
+  const sortedItems = data?.items ? [...data.items]
+    .filter(t => {
+      if (!selectedDate) return true;
+      const tDate = new Date(t.created_at);
+      return tDate.getDate() === selectedDate && tDate.getMonth() === new Date().getMonth();
+    })
+    .sort((a, b) => {
     let valA = a[sortCol];
     let valB = b[sortCol];
     
@@ -67,6 +74,14 @@ export default function Tickets() {
     if (valA > valB) return sortDesc ? -1 : 1;
     return 0;
   }) : [];
+
+  const handleDateClick = (day) => {
+    if (selectedDate === day) {
+      setSelectedDate(null); // toggle off
+    } else {
+      setSelectedDate(day);
+    }
+  };
 
   return (
     <div className="flex h-full w-full bg-white">
@@ -115,41 +130,38 @@ export default function Tickets() {
           <h2 className="text-lg font-semibold text-theme-textMain mb-6">Ticket Filters</h2>
 
           <div className="space-y-4">
-            <FilterSelect label="Category" value={category} onChange={setCategory} options={['Technical Support', 'Billing', 'General']} />
-            <FilterSelect label="Status" value={status} onChange={setStatus} options={['Open', 'In Progress', 'Resolved']} />
-            <FilterSelect label="Priority" value={priority} onChange={setPriority} options={['Urgent', 'High', 'Normal', 'Low']} />
+            <FilterSelect label="Category" value={category} onChange={setCategory} options={['All categories', 'Technical Support', 'Billing', 'General']} />
+            <FilterSelect label="Status" value={status} onChange={setStatus} options={['All statuses', 'Open', 'In Progress', 'Resolved']} />
+            <FilterSelect label="Priority" value={priority} onChange={setPriority} options={['All priorities', 'Urgent', 'High', 'Normal', 'Low']} />
             <FilterSelect label="Customer" value="All" onChange={() => {}} options={['All', 'Premium', 'Standard']} />
             <FilterSelect label="Agent" value="All" onChange={() => {}} options={['All', 'Me', 'Unassigned']} />
             
             {/* Created Date Filter / Calendar mock */}
             <div className="border border-theme-border rounded-lg overflow-hidden shadow-sm">
-              <button className="w-full flex items-center justify-between px-4 py-3 bg-white hover:bg-gray-50 transition-colors">
-                <span className="text-sm font-medium text-theme-textMain text-left">Created: 1 Nov - 4 Nov</span>
+              <button className="w-full flex items-center justify-between px-4 py-3 bg-white hover:bg-gray-50 transition-colors" onClick={() => setSelectedDate(null)}>
+                <span className="text-sm font-medium text-theme-textMain text-left">
+                  {selectedDate ? `Created: ${selectedDate} ${format(new Date(), 'MMM yyyy')}` : 'Created: All Time'}
+                </span>
                 <ChevronDown size={16} className="text-gray-400" />
               </button>
               <div className="p-4 border-t border-theme-border bg-white">
                 <div className="flex items-center justify-between mb-4">
                   <ChevronLeft size={14} className="text-gray-400 cursor-pointer" />
-                  <span className="text-sm font-medium text-theme-textMain">November 2019</span>
+                  <span className="text-sm font-medium text-theme-textMain">{format(new Date(), 'MMMM yyyy')}</span>
                   <ChevronRight size={14} className="text-gray-400 cursor-pointer" />
                 </div>
-                {/* Calendar Grid Mock */}
-                <div className="grid grid-cols-7 gap-y-2 text-center text-xs mb-2">
+                {/* Calendar Grid */}
+                <div className="grid grid-cols-7 gap-y-2 gap-x-1 text-center text-xs mb-2">
                   <div className="text-gray-400 font-medium">M</div><div className="text-gray-400 font-medium">T</div><div className="text-gray-400 font-medium">W</div><div className="text-gray-400 font-medium">T</div><div className="text-gray-400 font-medium">F</div><div className="text-gray-400 font-medium">S</div><div className="text-gray-400 font-medium">S</div>
                   <div className="text-gray-300">28</div><div className="text-gray-300">29</div><div className="text-gray-300">30</div><div className="text-gray-300">31</div>
-                  <div className="bg-theme-primary text-white rounded-full w-6 h-6 flex items-center justify-center mx-auto cursor-pointer">1</div>
-                  <div className="bg-theme-primary text-white rounded-full w-6 h-6 flex items-center justify-center mx-auto cursor-pointer">2</div>
-                  <div className="bg-theme-primary text-white rounded-full w-6 h-6 flex items-center justify-center mx-auto cursor-pointer">3</div>
-                  <div className="bg-theme-primary text-white rounded-full w-6 h-6 flex items-center justify-center mx-auto cursor-pointer">4</div>
-                  <div className="bg-theme-sidebarActive text-white rounded-full w-6 h-6 flex items-center justify-center mx-auto cursor-pointer">5</div>
-                  <div className="text-theme-textMain hover:bg-gray-100 rounded-full w-6 h-6 flex items-center justify-center mx-auto cursor-pointer">6</div>
-                  <div className="text-theme-textMain hover:bg-gray-100 rounded-full w-6 h-6 flex items-center justify-center mx-auto cursor-pointer">7</div>
-                  <div className="text-theme-textMain hover:bg-gray-100 rounded-full w-6 h-6 flex items-center justify-center mx-auto cursor-pointer">8</div>
-                  <div className="text-theme-textMain hover:bg-gray-100 rounded-full w-6 h-6 flex items-center justify-center mx-auto cursor-pointer">9</div>
-                  <div className="text-theme-textMain hover:bg-gray-100 rounded-full w-6 h-6 flex items-center justify-center mx-auto cursor-pointer">10</div>
-                  {/* Just fill a couple more rows to look like the mock */}
-                  {[11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30].map(day => (
-                    <div key={day} className="text-theme-textMain hover:bg-gray-100 rounded-full w-6 h-6 flex items-center justify-center mx-auto cursor-pointer">{day}</div>
+                  {Array.from({length: 30}, (_, i) => i + 1).map(day => (
+                    <div 
+                      key={day} 
+                      onClick={() => handleDateClick(day)}
+                      className={`rounded-full w-6 h-6 flex items-center justify-center mx-auto cursor-pointer transition-colors ${selectedDate === day ? 'bg-theme-primary text-white font-bold shadow-md shadow-theme-primary/30' : 'text-theme-textMain hover:bg-gray-100'}`}
+                    >
+                      {day}
+                    </div>
                   ))}
                   <div className="text-gray-300">1</div>
                 </div>
@@ -160,7 +172,7 @@ export default function Tickets() {
         
         {/* Bottom Action */}
         <div className="p-4 border-t border-theme-border flex justify-end">
-          <button className="text-sm font-semibold text-theme-textMain hover:text-gray-600 transition-colors">Clear filters</button>
+          <button onClick={() => { setCategory('All categories'); setStatus('All statuses'); setPriority('All priorities'); setSelectedDate(null); }} className="text-sm font-semibold text-theme-textMain hover:text-gray-600 transition-colors">Clear filters</button>
         </div>
       </div>
     </div>
