@@ -35,7 +35,8 @@ export default function NewTicket() {
   };
 
   return (
-    <div className="flex-1 overflow-y-auto p-8 bg-theme-bg min-h-0 flex justify-center">
+    <div className="flex flex-col flex-1 min-h-0 bg-theme-bg">
+      <div className="flex-1 overflow-y-auto p-8 flex justify-center">
       <div className="w-full max-w-3xl flex flex-col gap-6">
         
         <div className="bg-white rounded-3xl p-8 border border-theme-border shadow-soft">
@@ -168,6 +169,7 @@ export default function NewTicket() {
           </ul>
         </div>
       </div>
+    </div>
     </div>
   );
 }

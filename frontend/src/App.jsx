@@ -97,16 +97,14 @@ function AppContent() {
 
       {/* Main White Content Area */}
       <div className="flex-1 bg-theme-card rounded-tl-[40px] overflow-hidden shadow-2xl relative">
-        <div className="absolute inset-0 overflow-y-auto">
-          <div className="min-h-full">
-            <Routes>
-              <Route path="/" element={<Dashboard />} />
-              <Route path="/tickets" element={<Tickets />} />
-              <Route path="/tickets/new" element={<NewTicket />} />
-              <Route path="/tickets/:id" element={<TicketDetail />} />
-              <Route path="/customers" element={<Customers />} />
-            </Routes>
-          </div>
+        <div className="absolute inset-0 flex flex-col">
+          <Routes>
+            <Route path="/" element={<Dashboard />} />
+            <Route path="/tickets" element={<Tickets />} />
+            <Route path="/tickets/new" element={<NewTicket />} />
+            <Route path="/tickets/:id" element={<TicketDetail />} />
+            <Route path="/customers" element={<Customers />} />
+          </Routes>
         </div>
       </div>
     </div>

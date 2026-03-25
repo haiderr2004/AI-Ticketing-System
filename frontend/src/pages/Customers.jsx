@@ -42,8 +42,8 @@ export default function Customers() {
     const customerTickets = data?.items?.filter(t => t.submitter_email === selectedCustomer.email) || [];
 
     return (
-      <div className="flex flex-col h-full w-full bg-white">
-        <div className="p-8 pb-4 border-b border-theme-border">
+      <div className="flex flex-col flex-1 min-h-0 w-full bg-white">
+        <div className="p-8 pb-4 border-b border-theme-border flex-shrink-0">
           <button 
             onClick={() => setSelectedCustomer(null)}
             className="flex items-center gap-2 text-theme-textMuted hover:text-theme-textMain font-medium text-sm mb-4 transition-colors w-max"
@@ -81,8 +81,8 @@ export default function Customers() {
 
   // Otherwise, show the directory grid
   return (
-    <div className="flex h-full w-full bg-white p-8">
-      <div className="flex-1 flex flex-col min-w-0 max-w-6xl mx-auto">
+    <div className="flex flex-col flex-1 min-h-0 w-full bg-white">
+      <div className="flex-1 flex flex-col min-w-0 max-w-6xl mx-auto w-full p-8 overflow-y-auto">
         
         <div className="mb-8">
           <h2 className="text-2xl font-semibold text-theme-textMain tracking-tight">Customer Directory</h2>

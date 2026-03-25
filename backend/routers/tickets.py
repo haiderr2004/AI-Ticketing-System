@@ -1,17 +1,20 @@
+# pyright: reportGeneralTypeIssues=false
+# pyright: reportAttributeAccessIssue=false
+
 import logging
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks, status
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
 
-from backend.models.database import get_db
-from backend.models.ticket import Ticket, TicketStatus, get_utc_now
-from backend.models.schemas import TicketCreate, TicketUpdate, TicketResponse, TicketListResponse
-from backend.services.ticket_processor import process_ticket_async
-from backend.services.embedding_service import remove_ticket_embedding, add_ticket_embedding
-from backend.services.claude_service import run_triage
-from backend.services.duplicate_detector import check_for_duplicates
-from backend.services.notification_service import send_email_reply
+from ..models.database import get_db
+from ..models.ticket import Ticket, TicketStatus, get_utc_now
+from ..models.schemas import TicketCreate, TicketUpdate, TicketResponse, TicketListResponse
+from ..services.ticket_processor import process_ticket_async
+from ..services.embedding_service import remove_ticket_embedding, add_ticket_embedding
+from ..services.claude_service import run_triage
+from ..services.duplicate_detector import check_for_duplicates
+from ..services.notification_service import send_email_reply
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -55,7 +58,7 @@ def get_tickets(
     tickets = query.order_by(Ticket.created_at.desc()).offset((page - 1) * size).limit(size).all()
 
     return TicketListResponse(
-        items=tickets,
+        items=tickets, # type: ignore
         total=total,
         page=page,
         size=size
@@ -78,7 +81,7 @@ def create_ticket(
     db.commit()
     db.refresh(new_ticket)
 
-    background_tasks.add_task(process_ticket_async, new_ticket.id)
+    background_tasks.add_task(process_ticket_async, int(new_ticket.id)) # type: ignore
     return new_ticket
 
 @router.get("/{ticket_id}", response_model=TicketResponse)
@@ -98,18 +101,18 @@ def update_ticket(ticket_id: int, ticket_update: TicketUpdate, db: Session = Dep
     
     if "status" in update_data:
         new_status = update_data["status"]
-        if new_status == TicketStatus.resolved and ticket.status != TicketStatus.resolved:
-            ticket.resolved_at = get_utc_now()
-        ticket.status = new_status.value
+        if new_status == TicketStatus.resolved and ticket.status != TicketStatus.resolved: # type: ignore
+            ticket.resolved_at = get_utc_now() # type: ignore
+        ticket.status = new_status.value # type: ignore
         
     if "priority" in update_data:
-        ticket.priority = update_data["priority"].value
+        ticket.priority = update_data["priority"].value # type: ignore
     if "category" in update_data:
-        ticket.category = update_data["category"].value
+        ticket.category = update_data["category"].value # type: ignore
     if "assigned_to" in update_data:
-        ticket.assigned_to = update_data["assigned_to"]
+        ticket.assigned_to = update_data["assigned_to"] # type: ignore
     if "ai_draft_reply" in update_data:
-        ticket.ai_draft_reply = update_data["ai_draft_reply"]
+        ticket.ai_draft_reply = update_data["ai_draft_reply"] # type: ignore
 
     db.commit()
     db.refresh(ticket)
@@ -121,7 +124,7 @@ def delete_ticket(ticket_id: int, db: Session = Depends(get_db)):
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
 
-    ticket.status = TicketStatus.closed.value
+    ticket.status = TicketStatus.closed.value # type: ignore
     db.commit()
 
     try:
@@ -139,35 +142,40 @@ def retriage_ticket(ticket_id: int, db: Session = Depends(get_db)):
 
     try:
         triage_result = run_triage(
-            title=ticket.title,
-            description=ticket.description,
-            submitter_email=ticket.submitter_email or ""
+            title=str(ticket.title), # type: ignore
+            description=str(ticket.description), # type: ignore
+            submitter_email=str(ticket.submitter_email or "") # type: ignore
         )
-        ticket.category = triage_result.category.value
-        ticket.priority = triage_result.priority.value
-        ticket.ai_summary = triage_result.summary
-        ticket.ai_draft_reply = triage_result.draft_reply
-        ticket.ai_suggested_assignee = triage_result.suggested_assignee
-        ticket.ai_confidence_score = triage_result.confidence_score
-        ticket.triage_reasoning = triage_result.reasoning
+        ticket.category = triage_result.category.value # type: ignore
+        ticket.priority = triage_result.priority.value # type: ignore
+        ticket.ai_summary = triage_result.summary # type: ignore
+        ticket.ai_draft_reply = triage_result.draft_reply # type: ignore
+        ticket.ai_suggested_assignee = triage_result.suggested_assignee # type: ignore
+        ticket.ai_confidence_score = triage_result.confidence_score # type: ignore
+        ticket.triage_reasoning = triage_result.reasoning # type: ignore
         
         # Re-add embedding
         add_ticket_embedding(
-            ticket_id=ticket.id,
-            title=ticket.title,
-            description=ticket.description,
-            summary=ticket.ai_summary
+            ticket_id=int(ticket.id), # type: ignore
+            title=str(ticket.title), # type: ignore
+            description=str(ticket.description), # type: ignore
+            summary=str(ticket.ai_summary) if ticket.ai_summary else None # type: ignore
         )
 
         # Run duplicate check again
-        dup_check = check_for_duplicates(db, ticket.id, ticket.title, ticket.description)
+        dup_check = check_for_duplicates(
+            db, 
+            ticket_id=int(ticket.id), # type: ignore
+            title=str(ticket.title), # type: ignore
+            description=str(ticket.description) # type: ignore
+        )
         if dup_check.is_duplicate:
-            ticket.is_duplicate = True
-            ticket.duplicate_of_id = dup_check.duplicate_of_id
-            ticket.similarity_score = dup_check.similarity_score
-            ticket.status = TicketStatus.duplicate.value
+            ticket.is_duplicate = True # type: ignore
+            ticket.duplicate_of_id = dup_check.duplicate_of_id # type: ignore
+            ticket.similarity_score = dup_check.similarity_score # type: ignore
+            ticket.status = TicketStatus.duplicate.value # type: ignore
 
-        ticket.triage_completed_at = get_utc_now()
+        ticket.triage_completed_at = get_utc_now() # type: ignore
         
         db.commit()
         db.refresh(ticket)
@@ -182,20 +190,20 @@ def send_ticket_reply(ticket_id: int, db: Session = Depends(get_db)):
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
         
-    if not ticket.submitter_email:
+    if not ticket.submitter_email: # type: ignore
         raise HTTPException(status_code=400, detail="Ticket has no submitter email")
         
-    if not ticket.ai_draft_reply:
+    if not ticket.ai_draft_reply: # type: ignore
         raise HTTPException(status_code=400, detail="Ticket has no draft reply to send")
 
     try:
         send_email_reply(
-            to_email=ticket.submitter_email,
-            to_name=ticket.submitter_name or "",
-            ticket_id=ticket.id,
-            draft_reply=ticket.ai_draft_reply
+            to_email=str(ticket.submitter_email), # type: ignore
+            to_name=str(ticket.submitter_name or ""), # type: ignore
+            ticket_id=int(ticket.id), # type: ignore
+            draft_reply=str(ticket.ai_draft_reply) # type: ignore
         )
-        ticket.email_reply_sent = True
+        ticket.email_reply_sent = True # type: ignore
         db.commit()
         return {"status": "success", "message": "Reply sent successfully"}
     except Exception as e:

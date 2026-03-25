@@ -25,7 +25,7 @@ export default function Dashboard() {
   });
 
   return (
-    <div className="p-8 h-full flex flex-col min-w-0 bg-theme-card">
+    <div className="flex-1 p-6 md:p-8 flex flex-col min-h-0 min-w-0 bg-theme-card">
       <div className="flex-shrink-0">
         {loadingMetrics ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
