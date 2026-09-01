@@ -17,12 +17,17 @@ class TicketPriority(str, enum.Enum):
     critical = "critical"
 
 class TicketCategory(str, enum.Enum):
-    bug = "bug"
-    feature_request = "feature_request"
-    support = "support"
-    infrastructure = "infrastructure"
+    hardware = "hardware"
+    software = "software"
+    networking = "networking"
+    printing = "printing"
+    email_calendar = "email_calendar"
     security = "security"
     access_request = "access_request"
+    infrastructure = "infrastructure"
+    feature_request = "feature_request"
+    bug = "bug"
+    support = "support"
     other = "other"
 
 class TicketSource(str, enum.Enum):

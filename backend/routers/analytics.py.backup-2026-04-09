@@ -1,13 +1,12 @@
 import logging
 from datetime import timedelta
-
 from fastapi import APIRouter, Depends
-from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
+from sqlalchemy import func, extract
 
 from backend.models.database import get_db
+from backend.models.ticket import Ticket, TicketStatus, TicketPriority, get_utc_now
 from backend.models.schemas import DashboardMetrics
-from backend.models.ticket import Ticket, TicketPriority, TicketStatus, get_utc_now
 from backend.services.claude_service import generate_weekly_digest
 
 logger = logging.getLogger(__name__)
@@ -29,7 +28,6 @@ def get_metrics(db: Session = Depends(get_db)):
             resolved_today=0,
             critical_open_count=0,
             high_priority_open_count=0,
-            unassigned_tickets=0,
             average_resolution_time_hours=0.0,
             tickets_by_category={},
             tickets_by_source={},
@@ -53,11 +51,6 @@ def get_metrics(db: Session = Depends(get_db)):
     high_priority_open_count = db.query(Ticket).filter(
         Ticket.status.in_([TicketStatus.open.value, TicketStatus.in_progress.value]),
         Ticket.priority == TicketPriority.high.value
-    ).count()
-
-    unassigned_tickets = db.query(Ticket).filter(
-        Ticket.status.in_([TicketStatus.open.value, TicketStatus.in_progress.value]),
-        or_(Ticket.assigned_to.is_(None), Ticket.assigned_to == "")
     ).count()
     
     # Average resolution time
@@ -94,7 +87,6 @@ def get_metrics(db: Session = Depends(get_db)):
         resolved_today=resolved_today,
         critical_open_count=critical_open_count,
         high_priority_open_count=high_priority_open_count,
-        unassigned_tickets=unassigned_tickets,
         average_resolution_time_hours=round(avg_res_time, 2),
         tickets_by_category=tickets_by_category,
         tickets_by_source=tickets_by_source,
@@ -104,35 +96,18 @@ def get_metrics(db: Session = Depends(get_db)):
 
 @router.get("/trends")
 def get_trends(db: Session = Depends(get_db)):
-    now = get_utc_now()
-    seven_days_ago = now - timedelta(days=6)
-
-    opened_rows = db.query(Ticket.created_at).filter(Ticket.created_at >= seven_days_ago).all()
-    resolved_rows = db.query(Ticket.resolved_at).filter(
-        Ticket.resolved_at != None,
-        Ticket.resolved_at >= seven_days_ago
-    ).all()
-
-    opened_counts = {}
-    for row in opened_rows:
-        date_str = row.created_at.strftime('%Y-%m-%d')
-        opened_counts[date_str] = opened_counts.get(date_str, 0) + 1
-
-    closed_counts = {}
-    for row in resolved_rows:
-        date_str = row.resolved_at.strftime('%Y-%m-%d')
-        closed_counts[date_str] = closed_counts.get(date_str, 0) + 1
-
-    result = []
-    for offset in range(7):
-        day = seven_days_ago + timedelta(days=offset)
-        date_str = day.strftime('%Y-%m-%d')
-        result.append({
-            "date": date_str,
-            "opened": opened_counts.get(date_str, 0),
-            "closed": closed_counts.get(date_str, 0),
-        })
-
+    thirty_days_ago = get_utc_now() - timedelta(days=30)
+    
+    # Depending on the DB dialect, grouping by date varies.
+    # We can do this in memory for compatibility since volume is small.
+    tickets = db.query(Ticket.created_at).filter(Ticket.created_at >= thirty_days_ago).all()
+    
+    counts_by_date = {}
+    for t in tickets:
+        date_str = t.created_at.strftime('%Y-%m-%d')
+        counts_by_date[date_str] = counts_by_date.get(date_str, 0) + 1
+        
+    result = [{"date": k, "count": v} for k, v in sorted(counts_by_date.items())]
     return result
 
 @router.get("/weekly-digest")

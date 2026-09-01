@@ -98,7 +98,6 @@ class DashboardMetrics(BaseModel):
     resolved_today: int
     critical_open_count: int
     high_priority_open_count: int
-    unassigned_tickets: int
     average_resolution_time_hours: float
     tickets_by_category: Dict[str, int]
     tickets_by_source: Dict[str, int]

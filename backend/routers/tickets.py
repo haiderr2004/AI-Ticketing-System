@@ -134,6 +134,33 @@ def delete_ticket(ticket_id: int, db: Session = Depends(get_db)):
 
     return None
 
+@router.post("/retriage-all")
+def retriage_all_other(db: Session = Depends(get_db)):
+    """Re-triage every ticket currently categorised as 'other'."""
+    tickets = db.query(Ticket).filter(Ticket.category == "other").all()
+    updated = 0
+    for ticket in tickets:
+        try:
+            triage_result = run_triage(
+                title=str(ticket.title),
+                description=str(ticket.description),
+                submitter_email=str(ticket.submitter_email or "")
+            )
+            ticket.category = triage_result.category.value
+            ticket.priority = triage_result.priority.value
+            ticket.ai_summary = triage_result.summary
+            ticket.ai_draft_reply = triage_result.draft_reply
+            ticket.ai_suggested_assignee = triage_result.suggested_assignee
+            ticket.ai_confidence_score = triage_result.confidence_score
+            ticket.triage_reasoning = triage_result.reasoning
+            ticket.triage_completed_at = get_utc_now()
+            updated += 1
+        except Exception as e:
+            logger.error(f"Bulk retriage failed for ticket {ticket.id}: {e}")
+    db.commit()
+    return {"updated": updated, "message": f"{updated} ticket(s) re-triaged successfully"}
+
+
 @router.post("/{ticket_id}/retriage", response_model=TicketResponse)
 def retriage_ticket(ticket_id: int, db: Session = Depends(get_db)):
     ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()

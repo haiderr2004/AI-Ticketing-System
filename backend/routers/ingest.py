@@ -1,27 +1,47 @@
 import logging
 import re
-from fastapi import APIRouter, Depends, HTTPException, Header, BackgroundTasks, Request
+
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Request
 from sqlalchemy.orm import Session
+
+from backend.core.config import get_settings
 from backend.models.database import get_db
-from backend.models.ticket import Ticket, TicketSource
 from backend.models.schemas import EmailIngestRequest, SlackIngestRequest, TicketResponse
+from backend.models.ticket import Ticket, TicketSource
+from backend.services.email_ingestion import is_email_ingestion_configured, poll_mailbox
 from backend.services.ticket_processor import process_ticket_async
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+settings = get_settings()
+
 
 # Dependency for basic API key check
 def verify_api_key(x_api_key: str = Header(None)):
-    # For demo purposes, we accept "demo-secret" or any configured key
-    # In a real app, you would validate against a hashed DB value or settings
-    if x_api_key != "demo-secret":
+    expected_key = settings.INGEST_API_KEY or "demo-secret"
+    if x_api_key != expected_key:
         raise HTTPException(status_code=401, detail="Invalid API Key")
     return x_api_key
 
+@router.get("/email/status")
+def email_ingestion_status():
+    return {
+        "configured": is_email_ingestion_configured(),
+        "imap_host": settings.IMAP_HOST,
+        "imap_user": settings.IMAP_USER,
+        "poll_interval_seconds": settings.EMAIL_POLL_INTERVAL,
+    }
+
+
+@router.post("/email/poll")
+def ingest_email_poll(api_key: str = Depends(verify_api_key)):
+    return poll_mailbox()
+
+
 @router.post("/email", response_model=TicketResponse)
 def ingest_email(
-    request: EmailIngestRequest, 
-    background_tasks: BackgroundTasks, 
+    request: EmailIngestRequest,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     api_key: str = Depends(verify_api_key)
 ):
@@ -35,7 +55,7 @@ def ingest_email(
     db.add(ticket)
     db.commit()
     db.refresh(ticket)
-    
+
     background_tasks.add_task(process_ticket_async, ticket.id)
     return ticket
 

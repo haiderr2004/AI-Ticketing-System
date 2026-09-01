@@ -2,7 +2,7 @@ import pytest
 import json
 from unittest.mock import patch, MagicMock
 
-from backend.services.claude_service import run_triage
+from backend.services.claude_service import ask_tickets, run_triage
 from backend.models.schemas import TriageResult
 from backend.models.ticket import TicketCategory, TicketPriority
 
@@ -51,12 +51,12 @@ def test_run_triage_malformed_json_fallback(mock_anthropic_client):
         submitter_email="user@test.com"
     )
 
-    # Should hit fallback
+    # Should hit the free local fallback
     assert isinstance(result, TriageResult)
-    assert result.category == TicketCategory.other
-    assert result.priority == TicketPriority.medium
-    assert result.confidence_score == 0.0
-    assert "Automated triage failed" in result.summary
+    assert result.category == TicketCategory.bug
+    assert result.priority in [TicketPriority.medium, TicketPriority.high]
+    assert result.confidence_score > 0.0
+    assert "App crashing" in result.summary
 
 def test_run_triage_prompt_includes_details(mock_anthropic_client):
     # Setup standard mock response
@@ -81,8 +81,8 @@ def test_run_triage_prompt_includes_details(mock_anthropic_client):
     assert "user@test.com" in user_prompt
 
 def test_confidence_score_range():
-    # If the mocked AI returns a confidence score outside 0-1, it should raise a ValidationError
-    # and trigger fallback. Let's test that.
+    # If the mocked AI returns a confidence score outside 0-1, validation fails and the
+    # service should fall back to the free local triage logic.
     with patch("backend.services.claude_service.anthropic_client") as client:
         mock_message = MagicMock()
         mock_message.content = [MagicMock(text='''{
@@ -96,8 +96,23 @@ def test_confidence_score_range():
         }''')]
         client.messages.create.return_value = mock_message
 
-        result = run_triage("t", "d", "e")
-        
-        # 1.5 is > 1.0, so ValidationError happens in TriageResult instantiation -> fallback!
-        assert result.confidence_score == 0.0
-        assert result.category == TicketCategory.other
+        result = run_triage("Password reset", "I am locked out of payroll.", "e")
+
+        assert 0.0 <= result.confidence_score <= 1.0
+        assert result.category in [TicketCategory.access_request, TicketCategory.support]
+        assert result.draft_reply
+
+
+def test_ask_tickets_api_error_uses_local_fallback():
+    contexts = [
+        "Ticket #4 - VPN down\nStatus: open | Priority: high\nSummary: Remote staff cannot connect.",
+        "Ticket #7 - Password reset\nStatus: resolved | Priority: medium\nSummary: User was locked out.",
+    ]
+
+    with patch("backend.services.claude_service.anthropic_client") as client:
+        client.messages.create.side_effect = Exception("401 invalid key")
+        answer, refs = ask_tickets("how many tickets do we have", contexts)
+
+    assert "2 relevant ticket(s)" in answer
+    assert refs == [4, 7]
+

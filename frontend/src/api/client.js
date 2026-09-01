@@ -44,6 +44,11 @@ export const retriageTicket = async (id) => {
   return data;
 };
 
+export const retriageAllOther = async () => {
+  const { data } = await api.post('/tickets/retriage-all');
+  return data;
+};
+
 export const sendTicketReply = async (id) => {
   const { data } = await api.post(`/tickets/${id}/send-reply`);
   return data;

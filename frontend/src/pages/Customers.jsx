@@ -82,9 +82,8 @@ export default function Customers() {
   // Otherwise, show the directory grid
   return (
     <div className="flex flex-col flex-1 min-h-0 w-full bg-white">
-      <div className="flex-1 flex flex-col min-w-0 max-w-6xl mx-auto w-full p-8 overflow-y-auto">
-        
-        <div className="mb-8">
+      <div className="flex-1 flex flex-col min-w-0 w-full p-5 md:p-6 overflow-y-auto">
+        <div className="mb-6">
           <h2 className="text-2xl font-semibold text-theme-textMain tracking-tight">Customer Directory</h2>
           <p className="text-theme-textMuted mt-2 text-sm">Manage users who have submitted tickets to the system.</p>
         </div>
@@ -92,7 +91,7 @@ export default function Customers() {
         {isLoading ? (
           <div className="flex flex-col gap-4">
             {[...Array(4)].map((_, i) => (
-              <div key={i} className="animate-pulse h-24 bg-gray-50 border border-theme-border rounded-2xl"></div>
+              <div key={i} className="animate-pulse h-28 bg-gray-50 border border-theme-border rounded-2xl"></div>
             ))}
           </div>
         ) : customers.length === 0 ? (
@@ -104,40 +103,44 @@ export default function Customers() {
              <p className="text-xs mt-1 text-gray-400">Customers will appear here automatically when they submit tickets.</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {customers.map(c => (
-              <div 
-                key={c.email} 
-                className="bg-white border border-theme-border rounded-2xl p-6 shadow-soft hover:shadow-md hover:border-theme-primary/30 transition-all group cursor-pointer"
-                onClick={() => setSelectedCustomer(c)}
-              >
-                <div className="flex items-start gap-4 mb-4">
-                  <div className="w-12 h-12 rounded-full bg-theme-primary/10 text-theme-primary flex items-center justify-center font-bold text-lg">
-                    {c.name.charAt(0).toUpperCase()}
-                  </div>
-                  <div className="flex flex-col min-w-0">
-                    <h3 className="text-base font-semibold text-theme-textMain truncate group-hover:text-theme-primary transition-colors">{c.name}</h3>
-                    <div className="flex items-center gap-1.5 text-xs text-theme-textMuted mt-0.5 truncate">
-                      <Mail size={12} /> {c.email}
+          <div className="bg-white border border-theme-border rounded-2xl shadow-soft overflow-hidden">
+            <div className="divide-y divide-gray-100">
+              {customers.map(c => (
+                <div
+                  key={c.email}
+                  className="px-4 py-3 hover:bg-gray-50 transition-all group cursor-pointer"
+                  onClick={() => setSelectedCustomer(c)}
+                >
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-8 h-8 rounded-full bg-theme-primary/10 text-theme-primary flex items-center justify-center font-bold text-sm flex-shrink-0">
+                        {c.name.charAt(0).toUpperCase()}
+                      </div>
+                      <div className="flex flex-col min-w-0">
+                        <h3 className="text-sm font-semibold text-theme-textMain truncate group-hover:text-theme-primary transition-colors">{c.name}</h3>
+                        <div className="flex items-center gap-1 text-xs text-theme-textMuted mt-0.5 truncate">
+                          <Mail size={12} /> {c.email}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-3 flex-shrink-0">
+                      <div className="rounded-lg border border-theme-border bg-gray-50/70 px-3 py-1.5 text-center">
+                        <div className="text-[10px] uppercase font-bold tracking-wider text-gray-400 leading-none mb-0.5">Tickets</div>
+                        <div className="text-sm font-semibold text-theme-textMain">{c.ticketCount}</div>
+                      </div>
+                      <div className="rounded-lg border border-theme-border bg-gray-50/70 px-3 py-1.5">
+                        <div className="text-[10px] uppercase font-bold tracking-wider text-gray-400 leading-none mb-0.5">Last Active</div>
+                        <div className="text-xs font-medium text-theme-textMain flex items-center gap-1">
+                          <Calendar size={11} className="text-gray-400" />
+                          {format(new Date(c.lastActive), 'MMM d, yyyy')}
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
-                
-                <div className="pt-4 border-t border-gray-100 grid grid-cols-2 gap-4">
-                  <div className="flex flex-col gap-1">
-                    <span className="text-[10px] uppercase font-bold tracking-wider text-gray-400">Tickets</span>
-                    <span className="text-sm font-semibold text-theme-textMain">{c.ticketCount}</span>
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    <span className="text-[10px] uppercase font-bold tracking-wider text-gray-400">Last Active</span>
-                    <span className="text-sm font-medium text-theme-textMain flex items-center gap-1.5">
-                      <Calendar size={12} className="text-gray-400" />
-                      {format(new Date(c.lastActive), 'MMM d, yyyy')}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         )}
       </div>
