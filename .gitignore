@@ -32,3 +32,6 @@ dist/
 
 # Logs
 *.log
+
+# Editor and repair snapshots
+*.backup-*
