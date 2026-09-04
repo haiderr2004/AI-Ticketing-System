@@ -4,7 +4,7 @@
 import logging
 from ..models.database import SessionLocal
 from ..models.ticket import Ticket, TicketStatus, TicketPriority, get_utc_now
-from .claude_service import run_triage
+from .llm_service import format_triage_reasoning, run_triage
 from .embedding_service import add_ticket_embedding
 from .duplicate_detector import check_for_duplicates
 from .notification_service import notify_slack_new_ticket
@@ -36,7 +36,7 @@ def process_ticket_async(ticket_id: int):
             ticket.ai_draft_reply = triage_result.draft_reply # type: ignore
             ticket.ai_suggested_assignee = triage_result.suggested_assignee # type: ignore
             ticket.ai_confidence_score = triage_result.confidence_score # type: ignore
-            ticket.triage_reasoning = triage_result.reasoning # type: ignore
+            ticket.triage_reasoning = format_triage_reasoning(triage_result) # type: ignore
         except Exception as e:
             logger.error(f"Error during triage for ticket #{ticket_id}: {e}")
 

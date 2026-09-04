@@ -8,13 +8,14 @@ from sqlalchemy.orm import Session
 from backend.models.database import get_db
 from backend.models.schemas import DashboardMetrics
 from backend.models.ticket import Ticket, TicketPriority, TicketStatus, get_utc_now
-from backend.services.claude_service import generate_weekly_digest
+from backend.services.llm_service import generate_weekly_digest
+from backend.auth.technician import TechnicianIdentity, require_technician
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
 @router.get("/metrics", response_model=DashboardMetrics)
-def get_metrics(db: Session = Depends(get_db)):
+def get_metrics(db: Session = Depends(get_db), _technician: TechnicianIdentity = Depends(require_technician)):
     now = get_utc_now()
     one_day_ago = now - timedelta(days=1)
     thirty_days_ago = now - timedelta(days=30)
@@ -103,7 +104,7 @@ def get_metrics(db: Session = Depends(get_db)):
     )
 
 @router.get("/trends")
-def get_trends(db: Session = Depends(get_db)):
+def get_trends(db: Session = Depends(get_db), _technician: TechnicianIdentity = Depends(require_technician)):
     now = get_utc_now()
     seven_days_ago = now - timedelta(days=6)
 
@@ -136,7 +137,7 @@ def get_trends(db: Session = Depends(get_db)):
     return result
 
 @router.get("/weekly-digest")
-def get_weekly_digest(db: Session = Depends(get_db)):
+def get_weekly_digest(db: Session = Depends(get_db), _technician: TechnicianIdentity = Depends(require_technician)):
     seven_days_ago = get_utc_now() - timedelta(days=7)
     
     total_last_week = db.query(Ticket).filter(Ticket.created_at >= seven_days_ago).count()

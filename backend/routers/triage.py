@@ -5,7 +5,8 @@ from sqlalchemy.orm import Session
 from backend.models.database import get_db
 from backend.models.ticket import Ticket
 from backend.models.schemas import AskTicketsRequest, AskTicketsResponse
-from backend.services.claude_service import ask_tickets
+from backend.services.llm_service import ask_tickets
+from backend.auth.technician import TechnicianIdentity, require_technician
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -34,7 +35,7 @@ def _format_ticket_context(t: Ticket) -> str:
 
 
 @router.post("/ask", response_model=AskTicketsResponse)
-def ask_triage_question(request: AskTicketsRequest, db: Session = Depends(get_db)):
+def ask_triage_question(request: AskTicketsRequest, db: Session = Depends(get_db), _technician: TechnicianIdentity = Depends(require_technician)):
     question = request.question.strip()
 
     # Fetch all tickets — ordered newest first, cap at 300 to stay within token limits

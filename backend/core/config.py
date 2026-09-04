@@ -10,10 +10,7 @@ BASE_DIR = Path(__file__).resolve().parents[2]
 class Settings(BaseSettings):
     ENVIRONMENT: str = "development"
 
-    # Anthropic (legacy - not used when LLM_API_KEY is set)
-    ANTHROPIC_API_KEY: str = ""
-
-    # LM Studio / OpenAI-compatible LLM
+    # OpenAI-compatible LLM provider (for example, LM Studio or another compatible endpoint)
     LLM_API_KEY: str = ""
     LLM_BASE_URL: str = "https://api.lmstudio.ai/v1"
     LLM_MODEL: str = "llama-3.3-70b-instruct"
@@ -49,6 +46,12 @@ class Settings(BaseSettings):
 
     # Frontend URL (CORS)
     FRONTEND_URL: str = "http://localhost:5173"
+
+    # The Directory Service validates technician sessions. This service never
+    # reads or shares the Directory Service JWT signing secret.
+    DIRECTORY_SERVICE_URL: str = "http://localhost:8000"
+    DIRECTORY_SERVICE_TIMEOUT_SECONDS: float = 5.0
+    TICKET_SERVICE_API_KEY: str = ""
 
     model_config = SettingsConfigDict(
         env_file=str(BASE_DIR / ".env"),

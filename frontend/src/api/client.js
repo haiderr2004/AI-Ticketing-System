@@ -1,7 +1,15 @@
 import axios from 'axios';
+import { resolveTicketApiBase } from '../lib/workspaceNavigation';
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || '/api',
+  baseURL: resolveTicketApiBase(import.meta.env.VITE_API_URL, import.meta.env.BASE_URL),
+});
+
+// Reuse the Directory Service session; never create a ticket-only login.
+api.interceptors.request.use((config) => {
+  const token = window.localStorage.getItem('auth_token');
+  if (token) config.headers.Authorization = `Bearer ${token}`;
+  return config;
 });
 
 // Response interceptor for error logging in development
@@ -32,6 +40,11 @@ export const getTicket = async (id) => {
 
 export const updateTicket = async (id, ticketData) => {
   const { data } = await api.patch(`/tickets/${id}`, ticketData);
+  return data;
+};
+
+export const approveDirectoryAction = async (id, approval) => {
+  const { data } = await api.post(`/tickets/${id}/approve-directory-action`, approval);
   return data;
 };
 

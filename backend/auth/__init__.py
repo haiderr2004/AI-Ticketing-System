@@ -1,0 +1,1 @@
+"""Ticket Service authentication boundaries."""

@@ -3,6 +3,8 @@ import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { formatDistanceToNow } from 'date-fns';
 import { getTicket, updateTicket, retriageTicket, sendTicketReply } from '../api/client';
+import DirectoryActionPanel from '../components/DirectoryActionPanel';
+import { getReadableTriageReasoning } from '../lib/directoryActionProposal';
 import {
   Mail, Monitor, MessageSquare, Code, AlertTriangle,
   Sparkles, ChevronLeft, Bot, Clock3, RefreshCw, Send, CheckCircle2
@@ -303,7 +305,7 @@ export default function TicketDetail() {
                   <span className="group-open:rotate-90 transition-transform inline-block">▸</span> View reasoning
                 </summary>
                 <div className="mt-2 p-3 bg-white border border-purple-100 rounded-lg text-[11px] text-purple-800 leading-relaxed">
-                  {ticket.triage_reasoning}
+                  {getReadableTriageReasoning(ticket.triage_reasoning)}
                 </div>
               </details>
             )}
@@ -320,6 +322,8 @@ export default function TicketDetail() {
               {retriageMutation.isPending ? 'Processing…' : 'Re-run Analysis'}
             </button>
           </div>
+
+          <DirectoryActionPanel ticket={ticket} ticketId={id} />
 
         </div>
       </div>

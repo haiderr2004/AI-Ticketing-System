@@ -1,5 +1,7 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 import logging
 
@@ -42,6 +44,21 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(
+    _request: Request, exc: RequestValidationError
+) -> JSONResponse:
+    """Return useful field errors without echoing sensitive submitted values."""
+    errors = [
+        {key: error[key] for key in ("type", "loc", "msg") if key in error}
+        for error in exc.errors()
+    ]
+    return JSONResponse(
+        status_code=422,
+        content={"detail": "Validation error", "errors": errors},
+    )
 
 # Include Routers
 app.include_router(tickets.router, prefix="/tickets", tags=["Tickets"])

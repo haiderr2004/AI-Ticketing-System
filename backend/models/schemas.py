@@ -1,5 +1,5 @@
-from pydantic import BaseModel, Field, ConfigDict, EmailStr
-from typing import Optional, List, Dict, Any
+from pydantic import BaseModel, Field, ConfigDict, EmailStr, model_validator
+from typing import Literal, Optional, List, Dict, Any
 from datetime import datetime
 from backend.models.ticket import TicketStatus, TicketPriority, TicketCategory, TicketSource
 
@@ -17,6 +17,45 @@ class TicketUpdate(BaseModel):
     category: Optional[TicketCategory] = None
     assigned_to: Optional[str] = None
     ai_draft_reply: Optional[str] = None
+
+
+class DirectoryActionApproval(BaseModel):
+    """A one-time technician approval for an already supported AD operation."""
+
+    action: Literal["reset_password", "add_group"]
+    target_sam_account_name: str = Field(
+        min_length=1,
+        max_length=64,
+        pattern=r"^[A-Za-z0-9._-]+$",
+    )
+    new_password: Optional[str] = Field(default=None, min_length=12, max_length=512)
+    group_dns: List[str] = Field(default_factory=list, min_length=0, max_length=25)
+
+    @model_validator(mode="after")
+    def validate_action_payload(self) -> "DirectoryActionApproval":
+        if self.action == "reset_password":
+            if not self.new_password:
+                raise ValueError("A new password is required for a password reset.")
+            if self.group_dns:
+                raise ValueError("Group assignments are not valid for a password reset.")
+        elif self.action == "add_group":
+            if not self.group_dns:
+                raise ValueError("At least one group is required for a group assignment.")
+            if self.new_password is not None:
+                raise ValueError("A password is not valid for a group assignment.")
+        return self
+
+
+class DirectoryActionProposal(BaseModel):
+    """AI-suggested directory action that still requires technician approval."""
+
+    action: Literal["reset_password", "add_group"]
+    target_sam_account_name: str = Field(
+        min_length=1,
+        max_length=64,
+        pattern=r"^[A-Za-z0-9._-]+$",
+    )
+    group_dns: List[str] = Field(default_factory=list, max_length=25)
 
 class EmailIngestRequest(BaseModel):
     subject: str
@@ -84,6 +123,7 @@ class TriageResult(BaseModel):
     suggested_assignee: str
     confidence_score: float = Field(..., ge=0.0, le=1.0)
     reasoning: str
+    directory_action: Optional[DirectoryActionProposal] = None
 
 class DuplicateCheckResult(BaseModel):
     is_duplicate: bool

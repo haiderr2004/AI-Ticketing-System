@@ -65,7 +65,7 @@ export default function AskTicketsChat() {
             </div>
             <div>
               <p className="text-sm font-semibold text-white leading-none">Ask your tickets</p>
-              <p className="text-[10px] text-gray-400 mt-0.5">Powered by Claude AI</p>
+              <p className="text-[10px] text-gray-400 mt-0.5">AI-assisted ticket analysis</p>
             </div>
           </div>
           <button

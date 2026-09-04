@@ -160,7 +160,7 @@ export default function NewTicket() {
             </li>
             <li className="flex items-center gap-3">
               <div className="w-6 h-6 rounded-full bg-white/10 flex items-center justify-center flex-shrink-0">2</div>
-              Claude AI reads your description and assigns category and priority.
+              AI triage reads your description and assigns category and priority.
             </li>
             <li className="flex items-center gap-3">
               <div className="w-6 h-6 rounded-full bg-white/10 flex items-center justify-center flex-shrink-0">3</div>

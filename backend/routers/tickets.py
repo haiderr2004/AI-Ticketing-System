@@ -2,19 +2,32 @@
 # pyright: reportAttributeAccessIssue=false
 
 import logging
+import json
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks, status
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
 
 from ..models.database import get_db
-from ..models.ticket import Ticket, TicketStatus, get_utc_now
-from ..models.schemas import TicketCreate, TicketUpdate, TicketResponse, TicketListResponse
+from ..models.ticket import Ticket, TicketEvent, TicketStatus, get_utc_now
+from ..models.schemas import (
+    DirectoryActionApproval,
+    TicketCreate,
+    TicketUpdate,
+    TicketResponse,
+    TicketListResponse,
+)
 from ..services.ticket_processor import process_ticket_async
 from ..services.embedding_service import remove_ticket_embedding, add_ticket_embedding
-from ..services.claude_service import run_triage
+from ..services.llm_service import format_triage_reasoning, run_triage
 from ..services.duplicate_detector import check_for_duplicates
 from ..services.notification_service import send_email_reply
+from ..auth.technician import TechnicianIdentity, require_technician
+from ..services.directory_client import (
+    DirectoryActionRejected,
+    DirectoryServiceClient,
+    DirectoryServiceUnavailable,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -92,34 +105,142 @@ def get_ticket(ticket_id: int, db: Session = Depends(get_db)):
     return ticket
 
 @router.patch("/{ticket_id}", response_model=TicketResponse)
-def update_ticket(ticket_id: int, ticket_update: TicketUpdate, db: Session = Depends(get_db)):
+def update_ticket(ticket_id: int, ticket_update: TicketUpdate, db: Session = Depends(get_db), _technician: TechnicianIdentity = Depends(require_technician)):
     ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
 
     update_data = ticket_update.model_dump(exclude_unset=True)
+    events: list[TicketEvent] = []
     
     if "status" in update_data:
         new_status = update_data["status"]
+        previous_status = ticket.status
         if new_status == TicketStatus.resolved and ticket.status != TicketStatus.resolved: # type: ignore
             ticket.resolved_at = get_utc_now() # type: ignore
         ticket.status = new_status.value # type: ignore
+        if previous_status != ticket.status:
+            events.append(TicketEvent(ticket_id=ticket.id, actor_subject=_technician.subject, actor_dn=_technician.dn, event_type="STATUS_CHANGED", previous_value=json.dumps(previous_status), new_value=json.dumps(ticket.status)))
         
     if "priority" in update_data:
         ticket.priority = update_data["priority"].value # type: ignore
     if "category" in update_data:
         ticket.category = update_data["category"].value # type: ignore
     if "assigned_to" in update_data:
+        previous_assignee = ticket.assigned_to
         ticket.assigned_to = update_data["assigned_to"] # type: ignore
+        if previous_assignee != ticket.assigned_to:
+            events.append(TicketEvent(ticket_id=ticket.id, actor_subject=_technician.subject, actor_dn=_technician.dn, event_type="ASSIGNMENT_CHANGED", previous_value=json.dumps(previous_assignee), new_value=json.dumps(ticket.assigned_to)))
     if "ai_draft_reply" in update_data:
         ticket.ai_draft_reply = update_data["ai_draft_reply"] # type: ignore
 
+    db.add_all(events)
+    db.commit()
+    db.refresh(ticket)
+    return ticket
+
+
+@router.post("/{ticket_id}/approve-directory-action", response_model=TicketResponse)
+async def approve_directory_action(
+    ticket_id: int,
+    approval: DirectoryActionApproval,
+    db: Session = Depends(get_db),
+    technician: TechnicianIdentity = Depends(require_technician),
+):
+    """Execute a one-time, technician-approved directory action for a ticket."""
+    ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    if ticket.status in {
+        TicketStatus.resolved.value,
+        TicketStatus.closed.value,
+        TicketStatus.duplicate.value,
+    }:
+        raise HTTPException(
+            status_code=409,
+            detail="Directory actions require an open or in-progress ticket.",
+        )
+
+    action_metadata = {
+        "action": approval.action,
+        "target_sam_account_name": approval.target_sam_account_name,
+        "ticket_id": ticket_id,
+    }
+    client = DirectoryServiceClient()
+    try:
+        if approval.action == "reset_password":
+            await client.reset_password(
+                approval.target_sam_account_name,
+                approval.new_password or "",
+                ticket_id=ticket_id,
+            )
+        else:
+            await client.add_group(
+                approval.target_sam_account_name,
+                approval.group_dns,
+                ticket_id=ticket_id,
+            )
+    except DirectoryActionRejected:
+        ticket.status = TicketStatus.in_progress.value
+        db.add(
+            TicketEvent(
+                ticket_id=ticket.id,
+                actor_subject=technician.subject,
+                actor_dn=technician.dn,
+                event_type="DIRECTORY_ACTION_FAILED",
+                previous_value=None,
+                new_value=json.dumps({**action_metadata, "result": "FAILED"}),
+            )
+        )
+        db.commit()
+        raise HTTPException(status_code=400, detail="Directory action was not completed.") from None
+    except DirectoryServiceUnavailable:
+        ticket.status = TicketStatus.in_progress.value
+        db.add(
+            TicketEvent(
+                ticket_id=ticket.id,
+                actor_subject=technician.subject,
+                actor_dn=technician.dn,
+                event_type="DIRECTORY_ACTION_OUTCOME_UNKNOWN",
+                previous_value=None,
+                new_value=json.dumps({**action_metadata, "result": "UNKNOWN"}),
+            )
+        )
+        db.commit()
+        raise HTTPException(
+            status_code=503,
+            detail="Directory Service outcome is unknown; check its audit log before retrying.",
+        ) from None
+
+    previous_status = ticket.status
+    ticket.status = TicketStatus.resolved.value
+    ticket.resolved_at = get_utc_now()
+    db.add_all(
+        [
+            TicketEvent(
+                ticket_id=ticket.id,
+                actor_subject=technician.subject,
+                actor_dn=technician.dn,
+                event_type="DIRECTORY_ACTION_EXECUTED",
+                previous_value=None,
+                new_value=json.dumps({**action_metadata, "result": "SUCCESS"}),
+            ),
+            TicketEvent(
+                ticket_id=ticket.id,
+                actor_subject=technician.subject,
+                actor_dn=technician.dn,
+                event_type="STATUS_CHANGED",
+                previous_value=json.dumps(previous_status),
+                new_value=json.dumps(ticket.status),
+            ),
+        ]
+    )
     db.commit()
     db.refresh(ticket)
     return ticket
 
 @router.delete("/{ticket_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_ticket(ticket_id: int, db: Session = Depends(get_db)):
+def delete_ticket(ticket_id: int, db: Session = Depends(get_db), _technician: TechnicianIdentity = Depends(require_technician)):
     ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
@@ -135,7 +256,7 @@ def delete_ticket(ticket_id: int, db: Session = Depends(get_db)):
     return None
 
 @router.post("/retriage-all")
-def retriage_all_other(db: Session = Depends(get_db)):
+def retriage_all_other(db: Session = Depends(get_db), _technician: TechnicianIdentity = Depends(require_technician)):
     """Re-triage every ticket currently categorised as 'other'."""
     tickets = db.query(Ticket).filter(Ticket.category == "other").all()
     updated = 0
@@ -152,7 +273,7 @@ def retriage_all_other(db: Session = Depends(get_db)):
             ticket.ai_draft_reply = triage_result.draft_reply
             ticket.ai_suggested_assignee = triage_result.suggested_assignee
             ticket.ai_confidence_score = triage_result.confidence_score
-            ticket.triage_reasoning = triage_result.reasoning
+            ticket.triage_reasoning = format_triage_reasoning(triage_result)
             ticket.triage_completed_at = get_utc_now()
             updated += 1
         except Exception as e:
@@ -162,7 +283,7 @@ def retriage_all_other(db: Session = Depends(get_db)):
 
 
 @router.post("/{ticket_id}/retriage", response_model=TicketResponse)
-def retriage_ticket(ticket_id: int, db: Session = Depends(get_db)):
+def retriage_ticket(ticket_id: int, db: Session = Depends(get_db), _technician: TechnicianIdentity = Depends(require_technician)):
     ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
@@ -179,7 +300,7 @@ def retriage_ticket(ticket_id: int, db: Session = Depends(get_db)):
         ticket.ai_draft_reply = triage_result.draft_reply # type: ignore
         ticket.ai_suggested_assignee = triage_result.suggested_assignee # type: ignore
         ticket.ai_confidence_score = triage_result.confidence_score # type: ignore
-        ticket.triage_reasoning = triage_result.reasoning # type: ignore
+        ticket.triage_reasoning = format_triage_reasoning(triage_result) # type: ignore
         
         # Re-add embedding
         add_ticket_embedding(
@@ -212,7 +333,7 @@ def retriage_ticket(ticket_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail="Retriage process failed")
 
 @router.post("/{ticket_id}/send-reply")
-def send_ticket_reply(ticket_id: int, db: Session = Depends(get_db)):
+def send_ticket_reply(ticket_id: int, db: Session = Depends(get_db), _technician: TechnicianIdentity = Depends(require_technician)):
     ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")

@@ -82,3 +82,16 @@ class Ticket(Base):
     # Timing columns
     triage_completed_at = Column(DateTime(timezone=True), nullable=True)
     resolved_at = Column(DateTime(timezone=True), nullable=True)
+
+
+class TicketEvent(Base):
+    __tablename__ = "ticket_events"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    ticket_id = Column(Integer, ForeignKey("tickets.id"), nullable=False, index=True)
+    created_at = Column(DateTime(timezone=True), default=get_utc_now, nullable=False)
+    actor_subject = Column(String(256), nullable=False)
+    actor_dn = Column(String(2048), nullable=False)
+    event_type = Column(String(64), nullable=False)
+    previous_value = Column(Text, nullable=True)
+    new_value = Column(Text, nullable=True)

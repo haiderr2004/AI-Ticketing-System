@@ -11,15 +11,15 @@ export default {
       },
       colors: {
         theme: {
-          sidebar: '#2B2353',
-          sidebarActive: '#3A3266',
-          bg: '#F3F4F6', // main content background
+          sidebar: '#0F172A',
+          sidebarActive: '#1E293B',
+          bg: '#F8FAFC', // MissionControl-aligned workspace background
           card: '#FFFFFF',
           textMain: '#1F2937',
           textMuted: '#6B7280',
           border: '#E5E7EB',
-          primary: '#10B981', // The mint green
-          primaryHover: '#059669',
+          primary: '#4F46E5',
+          primaryHover: '#4338CA',
           danger: '#EF4444',
           dangerBg: '#FEE2E2',
         }
