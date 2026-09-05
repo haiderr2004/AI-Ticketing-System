@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { BrowserRouter, Routes, Route, Link, NavLink, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Ticket, Users, Plus, LogOut, User, Menu, ShieldCheck } from 'lucide-react';
+import { LayoutDashboard, Ticket, Users, Plus, LogOut, User, Menu, ShieldCheck, Activity } from 'lucide-react';
 import { useDirectoryAuth } from './auth/DirectoryAuthContext';
 import { resolveDirectoryWorkspaceUrl, routerBasename } from './lib/workspaceNavigation';
 import AskTicketsChat from './components/AskTicketsChat';
@@ -10,6 +10,7 @@ import TicketDetail from './pages/TicketDetail';
 import NewTicket from './pages/NewTicket';
 import Customers from './pages/Customers';
 import DirectorySignIn from './pages/DirectorySignIn';
+import ActivityWorkspace from './pages/ActivityWorkspace';
 
 function Sidebar({ collapsed, setCollapsed, identity }) {
   return (
@@ -73,6 +74,9 @@ function Sidebar({ collapsed, setCollapsed, identity }) {
             </>
           )}
         </NavLink>
+        <NavLink to="/activity" className={({ isActive }) => `flex items-center ${collapsed ? 'justify-center' : 'gap-3'} rounded-lg px-3 py-2.5 text-sm font-medium transition-colors relative ${isActive ? 'bg-indigo-50 text-indigo-800' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-950'}`} title="Activity & Troubleshooting">
+          {({ isActive }) => <><Activity size={20} className={isActive ? 'text-indigo-600 flex-shrink-0' : 'flex-shrink-0'} />{!collapsed && <span className="whitespace-nowrap">Activity</span>}</>}
+        </NavLink>
       </nav>
     </aside>
   );
@@ -86,6 +90,7 @@ function AppContent({ directoryWorkspaceUrl, identity, onSignOut }) {
     if (location.pathname === '/tickets') return 'Tickets';
     if (location.pathname === '/tickets/new') return 'Submit Ticket';
     if (location.pathname === '/customers') return 'Customers';
+    if (location.pathname === '/activity') return 'Activity & Troubleshooting';
     if (location.pathname.startsWith('/tickets/')) return 'Ticket Detail';
     return '';
   };
@@ -106,7 +111,8 @@ function AppContent({ directoryWorkspaceUrl, identity, onSignOut }) {
         </div>
         <nav aria-label="Primary workspace" className="flex flex-shrink-0 items-center rounded-lg border border-slate-200 bg-slate-50 p-1">
           <a href={directoryWorkspaceUrl} className="rounded-md px-3 py-1.5 text-sm font-medium text-slate-600 transition-colors hover:bg-white hover:text-slate-950 focus:outline-none focus:ring-2 focus:ring-indigo-500/30">Directory</a>
-          <Link to="/" aria-current="page" className="rounded-md bg-white px-3 py-1.5 text-sm font-semibold text-indigo-700 shadow-sm">Tickets</Link>
+          <Link to="/" aria-current={location.pathname === '/activity' ? undefined : 'page'} className={`rounded-md px-3 py-1.5 text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500/30 ${location.pathname === '/activity' ? 'font-medium text-slate-600 hover:bg-white hover:text-slate-950' : 'bg-white font-semibold text-indigo-700 shadow-sm'}`}>Tickets</Link>
+          <Link to="/activity" aria-current={location.pathname === '/activity' ? 'page' : undefined} className={`rounded-md px-3 py-1.5 text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500/30 ${location.pathname === '/activity' ? 'bg-white font-semibold text-indigo-700 shadow-sm' : 'font-medium text-slate-600 hover:bg-white hover:text-slate-950'}`}>Activity</Link>
         </nav>
         <div className="flex items-center gap-3">
           <span className="hidden text-sm font-medium text-slate-700 md:inline">{identity.subject}</span>
@@ -123,6 +129,7 @@ function AppContent({ directoryWorkspaceUrl, identity, onSignOut }) {
             <Route path="/tickets/new" element={<NewTicket />} />
             <Route path="/tickets/:id" element={<TicketDetail />} />
             <Route path="/customers" element={<Customers />} />
+            <Route path="/activity" element={<ActivityWorkspace directoryWorkspaceUrl={directoryWorkspaceUrl} />} />
           </Routes>
         </div>
         <AskTicketsChat />

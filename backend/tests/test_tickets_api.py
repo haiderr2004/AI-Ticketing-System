@@ -1,4 +1,5 @@
 import pytest
+from datetime import datetime, timedelta, timezone
 from fastapi.testclient import TestClient
 from unittest.mock import patch
 from sqlalchemy import create_engine
@@ -108,6 +109,31 @@ def test_list_tickets_pagination(client):
     assert data["total"] == 3
     assert len(data["items"]) == 2
     assert data["page"] == 1
+
+def test_activity_events_require_a_technician_session(client):
+    response = client.get("/tickets/activity/events")
+    assert response.status_code == 401
+
+def test_activity_events_filter_and_redact_directory_metadata(client, db_session):
+    identity = TechnicianIdentity(subject="tech1", dn="CN=Tech,OU=IT,DC=example,DC=test", exp_timestamp=9999999999)
+    app.dependency_overrides[require_technician] = lambda: identity
+    ticket = Ticket(title="Activity test", description="A ticket used only for activity contract coverage.", source="web_form")
+    db_session.add(ticket)
+    db_session.commit()
+    db_session.add_all([
+        TicketEvent(ticket_id=ticket.id, actor_subject="tech1", actor_dn=identity.dn, event_type="DIRECTORY_ACTION_EXECUTED", new_value='{"action":"ADD_GROUP","target_sam_account_name":"testuser1","group_dns":["CN=Sensitive"]}'),
+        TicketEvent(ticket_id=ticket.id, actor_subject="tech1", actor_dn=identity.dn, event_type="STATUS_CHANGED", new_value='"resolved"'),
+    ])
+    db_session.commit()
+    now = datetime.now(timezone.utc)
+    response = client.get("/tickets/activity/events", params={"start_at": (now - timedelta(days=1)).isoformat(), "end_at": (now + timedelta(minutes=1)).isoformat(), "target": "testuser1", "limit": 1, "offset": 0})
+    del app.dependency_overrides[require_technician]
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total"] == 1
+    assert data["entries"][0]["target_account"] == "testuser1"
+    assert data["entries"][0]["safe_metadata"] == {"action": "ADD_GROUP"}
+    assert "group_dns" not in str(data)
 
 def test_update_ticket_status_sets_resolved_at(client):
     create_resp = client.post("/tickets/", json={

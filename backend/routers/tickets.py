@@ -3,10 +3,12 @@
 
 import logging
 import json
+import re
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks, status
 from sqlalchemy.orm import Session
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 
 from ..models.database import get_db
 from ..models.ticket import Ticket, TicketEvent, TicketStatus, get_utc_now
@@ -31,6 +33,146 @@ from ..services.directory_client import (
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+_SAM_ACCOUNT_PATTERN = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
+_EVENT_TYPE_PATTERN = re.compile(r"^[A-Z0-9_]{1,64}$")
+_ACTIVITY_CATEGORIES = {
+    "ticket_workflow": {"STATUS_CHANGED", "ASSIGNMENT_CHANGED"},
+    "account_access": {"DIRECTORY_ACTION_EXECUTED", "DIRECTORY_ACTION_FAILED", "DIRECTORY_ACTION_OUTCOME_UNKNOWN"},
+    "group_access": {"DIRECTORY_ACTION_EXECUTED", "DIRECTORY_ACTION_FAILED", "DIRECTORY_ACTION_OUTCOME_UNKNOWN"},
+    "profile": set(),
+    "account_status": set(),
+    "directory_view": set(),
+    "directory_change": set(),
+}
+_ACTIVITY_RESULTS = {"success", "failed", "rejected", "in_progress", "unknown", "informational"}
+
+
+def _activity_timestamp(value: str, name: str) -> datetime:
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except (AttributeError, ValueError):
+        raise HTTPException(status_code=422, detail=f"{name} must be an ISO-8601 timestamp.") from None
+    if parsed.tzinfo is None:
+        raise HTTPException(status_code=422, detail=f"{name} must include a timezone.")
+    return parsed.astimezone(timezone.utc)
+
+
+def _activity_range(start_at: str | None, end_at: str | None) -> tuple[datetime, datetime]:
+    if bool(start_at) != bool(end_at):
+        raise HTTPException(status_code=422, detail="start_at and end_at must be provided together.")
+    end = _activity_timestamp(end_at, "end_at") if end_at else get_utc_now()
+    start = _activity_timestamp(start_at, "start_at") if start_at else end - timedelta(days=7)
+    if start >= end or end - start > timedelta(days=31):
+        raise HTTPException(status_code=422, detail="Date range must be positive and no more than 31 days.")
+    return start, end
+
+
+def _safe_activity_target(raw_value: str | None) -> tuple[str | None, dict[str, str]]:
+    """Extract only explicit, safe directory correlation from an event payload."""
+    if not raw_value or len(raw_value) > 4096:
+        return None, {}
+    try:
+        parsed = json.loads(raw_value)
+    except (TypeError, ValueError):
+        return None, {}
+    if not isinstance(parsed, dict):
+        return None, {}
+    target = parsed.get("target_sam_account_name")
+    action = parsed.get("action")
+    safe_target = target if isinstance(target, str) and _SAM_ACCOUNT_PATTERN.fullmatch(target) else None
+    safe_action = action if isinstance(action, str) and _EVENT_TYPE_PATTERN.fullmatch(action.upper()) else None
+    metadata = {"action": safe_action.upper()} if safe_action else {}
+    return safe_target, metadata
+
+
+def _ticket_activity_result(event_type: str) -> str:
+    return {
+        "DIRECTORY_ACTION_EXECUTED": "success",
+        "DIRECTORY_ACTION_FAILED": "rejected",
+        "DIRECTORY_ACTION_OUTCOME_UNKNOWN": "unknown",
+        "STATUS_CHANGED": "success",
+        "ASSIGNMENT_CHANGED": "informational",
+    }.get(event_type, "informational")
+
+
+def _ticket_activity_entry(event: TicketEvent) -> dict:
+    target, metadata = _safe_activity_target(event.new_value)
+    created_at = event.created_at
+    if created_at.tzinfo is None:
+        created_at = created_at.replace(tzinfo=timezone.utc)
+    return {
+        "source": "ticketing",
+        "source_id": f"ticket-event:{event.id}",
+        "occurred_at": created_at.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "category": "ticket_workflow" if event.event_type in {"STATUS_CHANGED", "ASSIGNMENT_CHANGED"} else "account_access",
+        "raw_code": event.event_type if _EVENT_TYPE_PATTERN.fullmatch(event.event_type) else "UNAVAILABLE",
+        "result": _ticket_activity_result(event.event_type),
+        "actor": event.actor_subject if _SAM_ACCOUNT_PATTERN.fullmatch(event.actor_subject) else None,
+        "target_account": target,
+        "ticket_id": event.ticket_id,
+        "safe_metadata": metadata,
+    }
+
+
+@router.get("/activity/events")
+def get_ticket_activity_events(
+    start_at: Optional[str] = None,
+    end_at: Optional[str] = None,
+    ticket_id: Optional[int] = Query(None, ge=1),
+    actor: Optional[str] = None,
+    target: Optional[str] = None,
+    event_type: Optional[str] = None,
+    category: Optional[str] = None,
+    result: Optional[str] = None,
+    limit: int = Query(25, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db),
+    _technician: TechnicianIdentity = Depends(require_technician),
+):
+    """Read a bounded, technician-authorized TicketEvent display projection."""
+    start, end = _activity_range(start_at, end_at)
+    if actor and not _SAM_ACCOUNT_PATTERN.fullmatch(actor):
+        raise HTTPException(status_code=422, detail="actor is invalid.")
+    if target and not _SAM_ACCOUNT_PATTERN.fullmatch(target):
+        raise HTTPException(status_code=422, detail="target is invalid.")
+    if event_type and not _EVENT_TYPE_PATTERN.fullmatch(event_type):
+        raise HTTPException(status_code=422, detail="event_type is invalid.")
+    if category and category not in _ACTIVITY_CATEGORIES:
+        raise HTTPException(status_code=422, detail="category is invalid.")
+    if result and result not in _ACTIVITY_RESULTS:
+        raise HTTPException(status_code=422, detail="result is invalid.")
+
+    # SQLite does not preserve timezone information for this legacy column.
+    # Compare UTC-naive values at the persistence boundary, then serialize UTC
+    # explicitly in the display projection below.
+    query_start = start.replace(tzinfo=None)
+    query_end = end.replace(tzinfo=None)
+    query = db.query(TicketEvent).filter(TicketEvent.created_at >= query_start, TicketEvent.created_at <= query_end)
+    if ticket_id:
+        query = query.filter(TicketEvent.ticket_id == ticket_id)
+    if actor:
+        query = query.filter(TicketEvent.actor_subject == actor)
+    if event_type:
+        query = query.filter(TicketEvent.event_type == event_type)
+    if category:
+        query = query.filter(TicketEvent.event_type.in_(_ACTIVITY_CATEGORIES[category]))
+    if result:
+        matching_types = [code for code in {"DIRECTORY_ACTION_EXECUTED", "DIRECTORY_ACTION_FAILED", "DIRECTORY_ACTION_OUTCOME_UNKNOWN", "STATUS_CHANGED", "ASSIGNMENT_CHANGED"} if _ticket_activity_result(code) == result]
+        if not matching_types:
+            return {"entries": [], "total": 0, "limit": limit, "offset": offset}
+        query = query.filter(TicketEvent.event_type.in_(matching_types))
+    if target:
+        # This is an exact, parameterized match on the explicit correlation
+        # written by the directory-action workflow; descriptions are never searched.
+        query = query.filter(
+            func.json_valid(TicketEvent.new_value),
+            func.json_extract(TicketEvent.new_value, "$.target_sam_account_name") == target,
+        )
+
+    total = query.count()
+    events = query.order_by(TicketEvent.created_at.desc(), TicketEvent.id.desc()).offset(offset).limit(limit).all()
+    return {"entries": [_ticket_activity_entry(event) for event in events], "total": total, "limit": limit, "offset": offset}
 
 @router.get("/", response_model=TicketListResponse)
 def get_tickets(

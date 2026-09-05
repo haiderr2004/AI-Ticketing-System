@@ -82,6 +82,33 @@ export const getWeeklyDigest = async () => {
   return data;
 };
 
+const directoryActivityApi = axios.create({ baseURL: window.location.origin });
+directoryActivityApi.interceptors.request.use((config) => {
+  const token = window.localStorage.getItem('auth_token');
+  if (token) config.headers.Authorization = `Bearer ${token}`;
+  return config;
+});
+
+export const getTicketActivityEvents = async (params) => {
+  const { data } = await api.get('/tickets/activity/events', { params });
+  return data;
+};
+
+export const getPortalAuditActivity = async (params) => {
+  const { data } = await directoryActivityApi.get('/api/activity/portal-audit', { params });
+  return data;
+};
+
+export const getNativeAdActivity = async (params) => {
+  const { data } = await directoryActivityApi.get('/api/activity/ad-security', { params });
+  return data;
+};
+
+export const getNativeAdActivityHealth = async () => {
+  const { data } = await directoryActivityApi.get('/api/activity/ad-security/health');
+  return data;
+};
+
 export const askTickets = async (question) => {
   const { data } = await api.post('/triage/ask', { question });
   return data;
