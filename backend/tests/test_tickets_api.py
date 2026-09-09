@@ -8,7 +8,7 @@ from sqlalchemy.pool import StaticPool
 
 from backend.main import app
 from backend.models.database import Base, get_db
-from backend.models.ticket import TicketStatus, Ticket, TicketEvent
+from backend.models.ticket import TicketStatus, Ticket, TicketEvent, TicketProcessingJob
 from backend.auth.technician import TechnicianIdentity, require_technician
 from backend.routers import tickets as tickets_router
 from backend.services.directory_client import (
@@ -47,13 +47,7 @@ def client(db_session):
     yield TestClient(app)
     del app.dependency_overrides[get_db]
 
-# Mock the background task so API tests do not call an external LLM provider.
-@pytest.fixture(autouse=True)
-def mock_process_ticket_async():
-    with patch("backend.routers.tickets.process_ticket_async") as mock_process:
-        yield mock_process
-
-def test_create_ticket_success(client):
+def test_create_ticket_success(client, db_session):
     response = client.post("/tickets/", json={
         "title": "My computer is broken",
         "description": "It won't turn on since the power outage yesterday.",
@@ -66,6 +60,9 @@ def test_create_ticket_success(client):
     assert data["title"] == "My computer is broken"
     assert data["status"] == "open"
     assert "id" in data
+    job = db_session.query(TicketProcessingJob).filter_by(ticket_id=data["id"]).one()
+    assert job.status == "pending"
+    assert job.job_type == "triage"
 
 def test_create_ticket_validation_error(client):
     # Title too short (< 5 chars)
@@ -93,6 +90,54 @@ def test_get_ticket_by_id(client):
 def test_get_nonexistent_ticket(client):
     response = client.get("/tickets/9999")
     assert response.status_code == 404
+
+
+def test_ticket_guidance_requires_a_technician_session(client, db_session):
+    ticket = Ticket(title="Password reset request", description="The user forgot their password and needs help.")
+    db_session.add(ticket)
+    db_session.commit()
+
+    response = client.get(f"/tickets/{ticket.id}/guidance")
+
+    assert response.status_code == 401
+
+
+def test_processing_health_requires_auth_and_exposes_only_counts(client):
+    assert client.get("/tickets/processing/health").status_code == 401
+    app.dependency_overrides[require_technician] = lambda: TechnicianIdentity(
+        subject="jdoe", dn="CN=John Doe,OU=IT,DC=example,DC=test", exp_timestamp=1.0
+    )
+    try:
+        response = client.get("/tickets/processing/health")
+    finally:
+        del app.dependency_overrides[require_technician]
+
+    assert response.status_code == 200
+    assert set(response.json()) == {"status", "pending", "running", "failed", "oldest_pending_age_seconds"}
+
+
+def test_ticket_guidance_is_ticket_scoped_cited_and_redacted(client, db_session):
+    ticket = Ticket(
+        title="Password reset request",
+        description="Reset access for jane.doe@example.test after verification.",
+        submitter_email="jane.doe@example.test",
+    )
+    db_session.add(ticket)
+    db_session.commit()
+    app.dependency_overrides[require_technician] = lambda: TechnicianIdentity(
+        subject="jdoe", dn="CN=John Doe,OU=IT,DC=example,DC=test", exp_timestamp=1.0
+    )
+    try:
+        response = client.get(f"/tickets/{ticket.id}/guidance")
+    finally:
+        del app.dependency_overrides[require_technician]
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["ticket_id"] == ticket.id
+    assert payload["citations"] == [{"article_id": "KB-ACCESS-002", "title": "Handle password reset requests", "version": "1.0"}]
+    assert "jane.doe@example.test" not in str(payload)
+    assert len(payload["recommended_checks"]) == 3
 
 def test_list_tickets_pagination(client):
     # Create 3 tickets

@@ -9,7 +9,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from backend.core.config import get_settings
 from backend.models.database import SessionLocal
 from backend.models.ticket import Ticket, TicketSource
-from backend.services.ticket_processor import process_ticket_async
+from backend.services.job_queue import enqueue_ticket_processing
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -190,10 +190,10 @@ def poll_mailbox():
                     source=TicketSource.email.value
                 )
                 db.add(new_ticket)
+                db.flush()
+                enqueue_ticket_processing(db, new_ticket)
                 db.commit()
                 db.refresh(new_ticket)
-
-                process_ticket_async(int(new_ticket.id))
                 result["processed"] += 1
 
                 mail.store(e_id, "+FLAGS", "\\Seen")

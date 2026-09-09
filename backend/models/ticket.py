@@ -1,6 +1,6 @@
 import enum
 from datetime import datetime, timezone
-from sqlalchemy import Column, Integer, String, Text, Boolean, Float, DateTime, Enum as SQLAlchemyEnum, ForeignKey
+from sqlalchemy import CheckConstraint, Column, Integer, String, Text, Boolean, Float, DateTime, ForeignKey, Index, UniqueConstraint, text
 from backend.models.database import Base
 
 class TicketStatus(str, enum.Enum):
@@ -95,3 +95,36 @@ class TicketEvent(Base):
     event_type = Column(String(64), nullable=False)
     previous_value = Column(Text, nullable=True)
     new_value = Column(Text, nullable=True)
+
+
+class TicketProcessingJob(Base):
+    """Durable work item for ticket processing outside the API process."""
+
+    __tablename__ = "ticket_processing_jobs"
+    __table_args__ = (
+        UniqueConstraint("idempotency_key", name="uq_ticket_processing_jobs_idempotency_key"),
+        Index(
+            "uq_ticket_processing_jobs_active_ticket_type",
+            "ticket_id",
+            "job_type",
+            unique=True,
+            sqlite_where=text("status IN ('pending', 'running')"),
+            postgresql_where=text("status IN ('pending', 'running')"),
+        ),
+        CheckConstraint("status IN ('pending', 'running', 'completed', 'failed')", name="ck_ticket_processing_jobs_status"),
+        CheckConstraint("attempts >= 0 AND max_attempts BETWEEN 1 AND 10", name="ck_ticket_processing_jobs_attempts"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    ticket_id = Column(Integer, ForeignKey("tickets.id", ondelete="CASCADE"), nullable=False, index=True)
+    job_type = Column(String(32), nullable=False, default="triage")
+    idempotency_key = Column(String(128), nullable=False)
+    status = Column(String(16), nullable=False, default="pending", index=True)
+    attempts = Column(Integer, nullable=False, default=0)
+    max_attempts = Column(Integer, nullable=False, default=3)
+    available_at = Column(DateTime(timezone=True), nullable=False, default=get_utc_now)
+    locked_at = Column(DateTime(timezone=True), nullable=True)
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+    last_error_code = Column(String(64), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=get_utc_now)
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=get_utc_now, onupdate=get_utc_now)

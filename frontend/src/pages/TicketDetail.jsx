@@ -2,8 +2,9 @@ import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { formatDistanceToNow } from 'date-fns';
-import { getTicket, updateTicket, retriageTicket, sendTicketReply } from '../api/client';
+import { getTicket, getTicketGuidance, updateTicket, retriageTicket, sendTicketReply } from '../api/client';
 import DirectoryActionPanel from '../components/DirectoryActionPanel';
+import TicketGuidance from '../components/TicketGuidance';
 import { getReadableTriageReasoning } from '../lib/directoryActionProposal';
 import {
   Mail, Monitor, MessageSquare, Code, AlertTriangle,
@@ -59,6 +60,12 @@ export default function TicketDetail() {
     queryFn: () => getTicket(id),
     refetchInterval: (data) => (data?.triage_completed_at ? false : 3000),
   });
+  const { data: guidance, isLoading: isGuidanceLoading, error: guidanceError } = useQuery({
+    queryKey: ['ticket-guidance', id],
+    queryFn: () => getTicketGuidance(id),
+    enabled: Boolean(ticket),
+    retry: 1,
+  });
 
   useEffect(() => {
     if (ticket) {
@@ -83,7 +90,6 @@ export default function TicketDetail() {
   const isDirty = draftReply !== (ticket.ai_draft_reply || '');
   const assigneeChanged = localAssignee !== (ticket.assigned_to || 'Unassigned');
   const statusChanged   = localStatus   !== ticket.status;
-  const confidencePct   = ticket.ai_confidence_score != null ? Math.round(ticket.ai_confidence_score * 100) : null;
 
   return (
     <div className="h-full overflow-hidden flex flex-col">
@@ -286,18 +292,6 @@ export default function TicketDetail() {
               <p className="text-xs text-theme-textMain leading-relaxed">{getNextStep(ticket)}</p>
             </div>
 
-            {/* Confidence */}
-            {confidencePct !== null && (
-              <div className="mb-3">
-                <div className="flex items-center justify-between text-[10px] font-bold text-purple-500 uppercase tracking-wider mb-1">
-                  <span>Confidence</span><span>{confidencePct}%</span>
-                </div>
-                <div className="h-1.5 bg-purple-100 rounded-full overflow-hidden">
-                  <div className="h-full bg-purple-500 rounded-full transition-all" style={{ width: `${confidencePct}%` }} />
-                </div>
-              </div>
-            )}
-
             {/* Reasoning */}
             {ticket.triage_reasoning && (
               <details className="mb-3 group">
@@ -324,6 +318,8 @@ export default function TicketDetail() {
           </div>
 
           <DirectoryActionPanel ticket={ticket} ticketId={id} />
+
+          <TicketGuidance guidance={guidance} isLoading={isGuidanceLoading} error={guidanceError} />
 
         </div>
       </div>

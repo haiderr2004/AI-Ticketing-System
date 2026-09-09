@@ -1,5 +1,8 @@
 from types import SimpleNamespace
 
+from fastapi.testclient import TestClient
+
+from backend.main import app
 from backend.models.schemas import TriageResult
 from backend.services import llm_service
 
@@ -104,7 +107,7 @@ def test_openai_compatible_response_is_parsed(monkeypatch):
     assert result.summary == "Reset requested"
 
 
-def test_openai_compatible_prompt_includes_ticket_pii(monkeypatch):
+def test_openai_compatible_prompt_uses_a_bounded_redacted_ticket_projection(monkeypatch):
     captured = {}
     response = SimpleNamespace(
         choices=[
@@ -126,15 +129,25 @@ def test_openai_compatible_prompt_includes_ticket_pii(monkeypatch):
     monkeypatch.setattr(llm_service, "llm_client", fake_client)
 
     llm_service.run_triage(
-        title="Specific title",
-        description="Specific description",
+        title="Password help for user@example.test",
+        description=(
+            "Username: jdoe. Password=hunter2. Session header Bearer abc.def.ghi. "
+            "Group CN=Payroll,OU=Groups,DC=example,DC=test. " + ("x" * 5000)
+        ),
         submitter_email="user@example.test",
     )
 
     prompt = captured["messages"][1]["content"]
-    assert "Specific title" in prompt
-    assert "Specific description" in prompt
-    assert "user@example.test" in prompt
+    assert "user@example.test" not in prompt
+    assert "jdoe" not in prompt
+    assert "hunter2" not in prompt
+    assert "abc.def.ghi" not in prompt
+    assert "CN=Payroll" not in prompt
+    assert "Submitter Email" not in prompt
+    assert "[REDACTED_EMAIL]" in prompt
+    assert "[REDACTED_SECRET]" in prompt
+    assert "[REDACTED_TOKEN]" in prompt
+    assert len(prompt) < 5000
 
 
 def test_malformed_provider_response_uses_local_fallback(monkeypatch):
@@ -206,31 +219,10 @@ def test_provider_cannot_propose_a_target_missing_from_the_ticket(monkeypatch):
     assert result.directory_action is None
 
 
-def test_ask_tickets_uses_local_fallback_without_a_configured_provider(monkeypatch):
-    monkeypatch.setattr(llm_service, "llm_client", None)
-
-    answer, references = llm_service.ask_tickets(
-        "how many tickets do we have",
-        ["Ticket #4 - VPN down", "Ticket #7 - Password reset"],
+def test_legacy_global_ticket_chat_route_is_not_exposed():
+    response = TestClient(app).post(
+        "/triage/ask",
+        json={"question": "Summarize every ticket in the system."},
     )
 
-    assert "2 relevant ticket(s)" in answer
-    assert references == [4, 7]
-
-
-def test_ask_tickets_provider_failure_uses_local_fallback(monkeypatch):
-    def fail(**_kwargs):
-        raise RuntimeError("provider unavailable")
-
-    fake_client = SimpleNamespace(
-        chat=SimpleNamespace(completions=SimpleNamespace(create=fail))
-    )
-    monkeypatch.setattr(llm_service, "llm_client", fake_client)
-
-    answer, references = llm_service.ask_tickets(
-        "how many tickets do we have",
-        ["Ticket #4 - VPN down", "Ticket #7 - Password reset"],
-    )
-
-    assert "2 relevant ticket(s)" in answer
-    assert references == [4, 7]
+    assert response.status_code == 404

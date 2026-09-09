@@ -1,10 +1,10 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
-from backend.core.config import get_settings
+from backend.core.config import get_settings, resolve_database_url
 
 settings = get_settings()
 
-db_url = settings.DATABASE_URL
+db_url = resolve_database_url(settings.DATABASE_URL)
 connect_args = {}
 engine_kwargs = {}
 

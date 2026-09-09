@@ -20,12 +20,12 @@ import sys
 import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 
-from backend.core.config import get_settings
+from backend.core.config import get_settings, resolve_database_url
 from backend.models.database import Base
 from backend.models.ticket import Ticket  # Important: import models so Alembic detects them
 
 settings = get_settings()
-config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
+config.set_main_option("sqlalchemy.url", resolve_database_url(settings.DATABASE_URL))
 
 target_metadata = Base.metadata
 

@@ -70,9 +70,6 @@ class SlackIngestRequest(BaseModel):
     user_name: str
     channel_name: str
 
-class AskTicketsRequest(BaseModel):
-    question: str
-
 # Response Schemas
 class TicketResponse(BaseModel):
     id: int
@@ -118,11 +115,11 @@ class TicketListResponse(BaseModel):
 class TriageResult(BaseModel):
     category: TicketCategory
     priority: TicketPriority
-    summary: str
-    draft_reply: str
-    suggested_assignee: str
+    summary: str = Field(min_length=1, max_length=220)
+    draft_reply: str = Field(min_length=1, max_length=2000)
+    suggested_assignee: str = Field(min_length=1, max_length=100)
     confidence_score: float = Field(..., ge=0.0, le=1.0)
-    reasoning: str
+    reasoning: str = Field(min_length=1, max_length=1000)
     directory_action: Optional[DirectoryActionProposal] = None
 
 class DuplicateCheckResult(BaseModel):
@@ -145,7 +142,31 @@ class DashboardMetrics(BaseModel):
     triage_completion_rate: float
     duplicate_rate: float
 
-class AskTicketsResponse(BaseModel):
-    answer: str
-    relevant_ticket_ids: List[int]
-    context_chunks_used: int
+
+class GuidanceCitation(BaseModel):
+    article_id: str = Field(pattern=r"^KB-[A-Z]+-\d{3}$")
+    title: str = Field(min_length=1, max_length=160)
+    version: str = Field(pattern=r"^\d+\.\d+$")
+
+
+class GuidanceCheck(BaseModel):
+    step: str = Field(min_length=1, max_length=500)
+    citation: GuidanceCitation
+
+
+class TicketGuidanceResponse(BaseModel):
+    ticket_id: int = Field(ge=1)
+    evidence_status: Literal["supported", "insufficient"]
+    observations: List[str] = Field(max_length=8)
+    hypotheses: List[str] = Field(max_length=3)
+    recommended_checks: List[GuidanceCheck] = Field(max_length=3)
+    citations: List[GuidanceCitation] = Field(max_length=3)
+    notice: str = Field(min_length=1, max_length=300)
+
+
+class ProcessingQueueHealth(BaseModel):
+    status: Literal["healthy", "degraded"]
+    pending: int = Field(ge=0)
+    running: int = Field(ge=0)
+    failed: int = Field(ge=0)
+    oldest_pending_age_seconds: int = Field(ge=0)

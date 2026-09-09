@@ -6,23 +6,24 @@ import json
 import re
 from datetime import datetime, timedelta, timezone
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 from sqlalchemy import func, or_
 
 from ..models.database import get_db
-from ..models.ticket import Ticket, TicketEvent, TicketStatus, get_utc_now
+from ..models.ticket import Ticket, TicketEvent, TicketProcessingJob, TicketStatus, get_utc_now
 from ..models.schemas import (
     DirectoryActionApproval,
     TicketCreate,
     TicketUpdate,
     TicketResponse,
     TicketListResponse,
+    TicketGuidanceResponse,
+    ProcessingQueueHealth,
 )
-from ..services.ticket_processor import process_ticket_async
-from ..services.embedding_service import remove_ticket_embedding, add_ticket_embedding
-from ..services.llm_service import format_triage_reasoning, run_triage
-from ..services.duplicate_detector import check_for_duplicates
+from ..services.embedding_service import remove_ticket_embedding
+from ..services.job_queue import enqueue_ticket_processing
+from ..services.technician_guidance import build_ticket_guidance
 from ..services.notification_service import send_email_reply
 from ..auth.technician import TechnicianIdentity, require_technician
 from ..services.directory_client import (
@@ -222,7 +223,6 @@ def get_tickets(
 @router.post("/", response_model=TicketResponse, status_code=status.HTTP_201_CREATED)
 def create_ticket(
     ticket_in: TicketCreate,
-    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db)
 ):
     new_ticket = Ticket(
@@ -233,11 +233,43 @@ def create_ticket(
         submitter_email=ticket_in.submitter_email
     )
     db.add(new_ticket)
+    db.flush()
+    enqueue_ticket_processing(db, new_ticket)
     db.commit()
     db.refresh(new_ticket)
-
-    background_tasks.add_task(process_ticket_async, int(new_ticket.id)) # type: ignore
     return new_ticket
+
+
+@router.get("/processing/health", response_model=ProcessingQueueHealth)
+def get_processing_queue_health(
+    db: Session = Depends(get_db),
+    _technician: TechnicianIdentity = Depends(require_technician),
+):
+    counts = dict(
+        db.query(TicketProcessingJob.status, func.count(TicketProcessingJob.id))
+        .group_by(TicketProcessingJob.status)
+        .all()
+    )
+    oldest = (
+        db.query(TicketProcessingJob.created_at)
+        .filter(TicketProcessingJob.status == "pending")
+        .order_by(TicketProcessingJob.created_at)
+        .first()
+    )
+    age_seconds = 0
+    if oldest:
+        created_at = oldest[0]
+        if created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=timezone.utc)
+        age_seconds = max(0, int((get_utc_now() - created_at).total_seconds()))
+    degraded = counts.get("failed", 0) > 0 or age_seconds > 300
+    return {
+        "status": "degraded" if degraded else "healthy",
+        "pending": counts.get("pending", 0),
+        "running": counts.get("running", 0),
+        "failed": counts.get("failed", 0),
+        "oldest_pending_age_seconds": age_seconds,
+    }
 
 @router.get("/{ticket_id}", response_model=TicketResponse)
 def get_ticket(ticket_id: int, db: Session = Depends(get_db)):
@@ -280,6 +312,19 @@ def update_ticket(ticket_id: int, ticket_update: TicketUpdate, db: Session = Dep
     db.commit()
     db.refresh(ticket)
     return ticket
+
+
+@router.get("/{ticket_id}/guidance", response_model=TicketGuidanceResponse)
+def get_ticket_guidance(
+    ticket_id: int,
+    db: Session = Depends(get_db),
+    _technician: TechnicianIdentity = Depends(require_technician),
+):
+    """Return approved, bounded guidance for the one ticket being reviewed."""
+    ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    return build_ticket_guidance(ticket)
 
 
 @router.post("/{ticket_id}/approve-directory-action", response_model=TicketResponse)
@@ -399,29 +444,13 @@ def delete_ticket(ticket_id: int, db: Session = Depends(get_db), _technician: Te
 
 @router.post("/retriage-all")
 def retriage_all_other(db: Session = Depends(get_db), _technician: TechnicianIdentity = Depends(require_technician)):
-    """Re-triage every ticket currently categorised as 'other'."""
+    """Queue durable re-triage for every ticket categorised as 'other'."""
     tickets = db.query(Ticket).filter(Ticket.category == "other").all()
-    updated = 0
     for ticket in tickets:
-        try:
-            triage_result = run_triage(
-                title=str(ticket.title),
-                description=str(ticket.description),
-                submitter_email=str(ticket.submitter_email or "")
-            )
-            ticket.category = triage_result.category.value
-            ticket.priority = triage_result.priority.value
-            ticket.ai_summary = triage_result.summary
-            ticket.ai_draft_reply = triage_result.draft_reply
-            ticket.ai_suggested_assignee = triage_result.suggested_assignee
-            ticket.ai_confidence_score = triage_result.confidence_score
-            ticket.triage_reasoning = format_triage_reasoning(triage_result)
-            ticket.triage_completed_at = get_utc_now()
-            updated += 1
-        except Exception as e:
-            logger.error(f"Bulk retriage failed for ticket {ticket.id}: {e}")
+        enqueue_ticket_processing(db, ticket, job_type="retriage")
+        ticket.triage_completed_at = None
     db.commit()
-    return {"updated": updated, "message": f"{updated} ticket(s) re-triaged successfully"}
+    return {"updated": len(tickets), "message": f"{len(tickets)} ticket(s) queued for re-triage"}
 
 
 @router.post("/{ticket_id}/retriage", response_model=TicketResponse)
@@ -430,49 +459,11 @@ def retriage_ticket(ticket_id: int, db: Session = Depends(get_db), _technician: 
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
 
-    try:
-        triage_result = run_triage(
-            title=str(ticket.title), # type: ignore
-            description=str(ticket.description), # type: ignore
-            submitter_email=str(ticket.submitter_email or "") # type: ignore
-        )
-        ticket.category = triage_result.category.value # type: ignore
-        ticket.priority = triage_result.priority.value # type: ignore
-        ticket.ai_summary = triage_result.summary # type: ignore
-        ticket.ai_draft_reply = triage_result.draft_reply # type: ignore
-        ticket.ai_suggested_assignee = triage_result.suggested_assignee # type: ignore
-        ticket.ai_confidence_score = triage_result.confidence_score # type: ignore
-        ticket.triage_reasoning = format_triage_reasoning(triage_result) # type: ignore
-        
-        # Re-add embedding
-        add_ticket_embedding(
-            ticket_id=int(ticket.id), # type: ignore
-            title=str(ticket.title), # type: ignore
-            description=str(ticket.description), # type: ignore
-            summary=str(ticket.ai_summary) if ticket.ai_summary else None # type: ignore
-        )
-
-        # Run duplicate check again
-        dup_check = check_for_duplicates(
-            db, 
-            ticket_id=int(ticket.id), # type: ignore
-            title=str(ticket.title), # type: ignore
-            description=str(ticket.description) # type: ignore
-        )
-        if dup_check.is_duplicate:
-            ticket.is_duplicate = True # type: ignore
-            ticket.duplicate_of_id = dup_check.duplicate_of_id # type: ignore
-            ticket.similarity_score = dup_check.similarity_score # type: ignore
-            ticket.status = TicketStatus.duplicate.value # type: ignore
-
-        ticket.triage_completed_at = get_utc_now() # type: ignore
-        
-        db.commit()
-        db.refresh(ticket)
-        return ticket
-    except Exception as e:
-        logger.error(f"Retriage failed: {e}")
-        raise HTTPException(status_code=500, detail="Retriage process failed")
+    enqueue_ticket_processing(db, ticket, job_type="retriage")
+    ticket.triage_completed_at = None
+    db.commit()
+    db.refresh(ticket)
+    return ticket
 
 @router.post("/{ticket_id}/send-reply")
 def send_ticket_reply(ticket_id: int, db: Session = Depends(get_db), _technician: TechnicianIdentity = Depends(require_technician)):

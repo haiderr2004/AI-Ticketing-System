@@ -3,7 +3,6 @@ import { BrowserRouter, Routes, Route, Link, NavLink, useLocation } from 'react-
 import { LayoutDashboard, Ticket, Users, Plus, LogOut, User, Menu, ShieldCheck, Activity } from 'lucide-react';
 import { useDirectoryAuth } from './auth/DirectoryAuthContext';
 import { resolveDirectoryWorkspaceUrl, routerBasename } from './lib/workspaceNavigation';
-import AskTicketsChat from './components/AskTicketsChat';
 import Dashboard from './pages/Dashboard';
 import Tickets from './pages/Tickets';
 import TicketDetail from './pages/TicketDetail';
@@ -132,7 +131,6 @@ function AppContent({ directoryWorkspaceUrl, identity, onSignOut }) {
             <Route path="/activity" element={<ActivityWorkspace directoryWorkspaceUrl={directoryWorkspaceUrl} />} />
           </Routes>
         </div>
-        <AskTicketsChat />
         </div>
       </div>
     </div>

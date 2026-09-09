@@ -1,7 +1,8 @@
 import logging
 import re
+import secrets
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from backend.core.config import get_settings
@@ -9,7 +10,7 @@ from backend.models.database import get_db
 from backend.models.schemas import EmailIngestRequest, SlackIngestRequest, TicketResponse
 from backend.models.ticket import Ticket, TicketSource
 from backend.services.email_ingestion import is_email_ingestion_configured, poll_mailbox
-from backend.services.ticket_processor import process_ticket_async
+from backend.services.job_queue import enqueue_ticket_processing
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -17,18 +18,19 @@ settings = get_settings()
 
 
 # Dependency for basic API key check
-def verify_api_key(x_api_key: str = Header(None)):
-    expected_key = settings.INGEST_API_KEY or "demo-secret"
-    if x_api_key != expected_key:
+def verify_api_key(x_api_key: str | None = Header(None)):
+    expected_key = settings.INGEST_API_KEY.strip()
+    if not expected_key:
+        raise HTTPException(status_code=503, detail="Ingestion is not configured")
+    if not x_api_key or not secrets.compare_digest(x_api_key, expected_key):
         raise HTTPException(status_code=401, detail="Invalid API Key")
     return x_api_key
 
 @router.get("/email/status")
-def email_ingestion_status():
+def email_ingestion_status(_api_key: str = Depends(verify_api_key)):
     return {
         "configured": is_email_ingestion_configured(),
         "imap_host": settings.IMAP_HOST,
-        "imap_user": settings.IMAP_USER,
         "poll_interval_seconds": settings.EMAIL_POLL_INTERVAL,
     }
 
@@ -41,7 +43,6 @@ def ingest_email_poll(api_key: str = Depends(verify_api_key)):
 @router.post("/email", response_model=TicketResponse)
 def ingest_email(
     request: EmailIngestRequest,
-    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     api_key: str = Depends(verify_api_key)
 ):
@@ -53,17 +54,17 @@ def ingest_email(
         source=TicketSource.email.value
     )
     db.add(ticket)
+    db.flush()
+    enqueue_ticket_processing(db, ticket)
     db.commit()
     db.refresh(ticket)
-
-    background_tasks.add_task(process_ticket_async, ticket.id)
     return ticket
 
 @router.post("/slack", response_model=TicketResponse)
 def ingest_slack(
     request: SlackIngestRequest,
-    background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _api_key: str = Depends(verify_api_key),
 ):
     # Clean up Slack user mention formatting like <@U123456>
     clean_text = re.sub(r'<@[A-Z0-9]+>', '', request.text).strip()
@@ -76,17 +77,17 @@ def ingest_slack(
         source=TicketSource.slack.value
     )
     db.add(ticket)
+    db.flush()
+    enqueue_ticket_processing(db, ticket)
     db.commit()
     db.refresh(ticket)
-    
-    background_tasks.add_task(process_ticket_async, ticket.id)
     return ticket
 
 @router.post("/github")
 async def ingest_github(
     request: Request,
-    background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _api_key: str = Depends(verify_api_key),
 ):
     payload = await request.json()
     action = payload.get("action")
@@ -108,17 +109,17 @@ async def ingest_github(
         source=TicketSource.github.value
     )
     db.add(ticket)
+    db.flush()
+    enqueue_ticket_processing(db, ticket)
     db.commit()
     db.refresh(ticket)
-    
-    background_tasks.add_task(process_ticket_async, ticket.id)
     return {"status": "success", "ticket_id": ticket.id}
 
 @router.post("/webhook")
 async def ingest_webhook(
     request: Request,
-    background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _api_key: str = Depends(verify_api_key),
 ):
     payload = await request.json()
     title = payload.get("title")
@@ -133,8 +134,8 @@ async def ingest_webhook(
         source=TicketSource.api.value
     )
     db.add(ticket)
+    db.flush()
+    enqueue_ticket_processing(db, ticket)
     db.commit()
     db.refresh(ticket)
-    
-    background_tasks.add_task(process_ticket_async, ticket.id)
     return {"status": "success", "ticket_id": ticket.id}

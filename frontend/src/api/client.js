@@ -12,12 +12,16 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// Response interceptor for error logging in development
+// Keep development diagnostics useful without copying response bodies or ticket data.
 api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (import.meta.env.DEV) {
-      console.error('API Error:', error.response?.data || error.message);
+      console.error('API request failed', {
+        status: error.response?.status,
+        method: error.config?.method,
+        path: error.config?.url,
+      });
     }
     return Promise.reject(error);
   }
@@ -35,6 +39,11 @@ export const createTicket = async (ticketData) => {
 
 export const getTicket = async (id) => {
   const { data } = await api.get(`/tickets/${id}`);
+  return data;
+};
+
+export const getTicketGuidance = async (id) => {
+  const { data } = await api.get(`/tickets/${id}/guidance`);
   return data;
 };
 
@@ -106,10 +115,5 @@ export const getNativeAdActivity = async (params) => {
 
 export const getNativeAdActivityHealth = async () => {
   const { data } = await directoryActivityApi.get('/api/activity/ad-security/health');
-  return data;
-};
-
-export const askTickets = async (question) => {
-  const { data } = await api.post('/triage/ask', { question });
   return data;
 };

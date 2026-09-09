@@ -11,17 +11,14 @@ from .notification_service import notify_slack_new_ticket
 
 logger = logging.getLogger(__name__)
 
-def process_ticket_async(ticket_id: int):
-    """
-    Background pipeline to fully process a newly created ticket.
-    """
+def process_ticket(ticket_id: int) -> None:
+    """Process one ticket. Durable retry decisions belong to the job queue."""
     db = SessionLocal()
     try:
         # Step 1: Load the ticket
         ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
         if not ticket:
-            logger.error(f"Ticket #{ticket_id} not found in DB.")
-            return
+            raise LookupError(f"Ticket {ticket_id} no longer exists.")
 
         # Step 2: AI Triage
         try:
@@ -37,8 +34,9 @@ def process_ticket_async(ticket_id: int):
             ticket.ai_suggested_assignee = triage_result.suggested_assignee # type: ignore
             ticket.ai_confidence_score = triage_result.confidence_score # type: ignore
             ticket.triage_reasoning = format_triage_reasoning(triage_result) # type: ignore
-        except Exception as e:
-            logger.error(f"Error during triage for ticket #{ticket_id}: {e}")
+        except Exception:
+            logger.warning("Triage stage failed for ticket %s.", ticket_id)
+            raise
 
         # Step 3: Vector Embeddings
         try:
@@ -48,8 +46,8 @@ def process_ticket_async(ticket_id: int):
                 description=str(ticket.description), # type: ignore
                 summary=str(ticket.ai_summary) if ticket.ai_summary else None # type: ignore
             )
-        except Exception as e:
-            logger.error(f"Error during embedding for ticket #{ticket_id}: {e}")
+        except Exception:
+            logger.warning("Embedding stage failed for ticket %s; processing will continue.", ticket_id)
 
         # Step 4: Duplicate Detection
         try:
@@ -65,8 +63,8 @@ def process_ticket_async(ticket_id: int):
                 ticket.similarity_score = duplicate_result.similarity_score # type: ignore
                 ticket.status = TicketStatus.duplicate.value # type: ignore
                 # We could append the explanation to triage_reasoning or handle it elsewhere
-        except Exception as e:
-            logger.error(f"Error during duplicate detection for ticket #{ticket_id}: {e}")
+        except Exception:
+            logger.warning("Duplicate detection failed for ticket %s; processing will continue.", ticket_id)
 
         # Step 5: Triage completion timestamp
         ticket.triage_completed_at = get_utc_now() # type: ignore
@@ -80,12 +78,12 @@ def process_ticket_async(ticket_id: int):
             is_dup = bool(ticket.is_duplicate) # type: ignore
             if ticket.priority in [TicketPriority.high.value, TicketPriority.critical.value] and not is_dup: # type: ignore
                 notify_slack_new_ticket(ticket)
-        except Exception as e:
-            logger.error(f"Error sending Slack notification for ticket #{ticket_id}: {e}")
+        except Exception:
+            logger.warning("Notification failed for ticket %s; processing is complete.", ticket_id)
 
-    except Exception as e:
-        logger.error(f"Unhandled error in process_ticket_async for ticket #{ticket_id}: {e}")
+    except Exception:
         db.rollback()
+        raise
     finally:
         # Step 8: Close session
         db.close()

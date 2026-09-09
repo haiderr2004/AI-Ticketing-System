@@ -2,9 +2,19 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Optional
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BASE_DIR = Path(__file__).resolve().parents[2]
+
+
+def resolve_database_url(database_url: str, base_dir: Path = BASE_DIR) -> str:
+    """Anchor relative SQLite files to the repository, independent of CWD."""
+    prefix = "sqlite:///./"
+    if database_url.startswith(prefix):
+        database_path = (base_dir / database_url[len(prefix):]).resolve()
+        return f"sqlite:///{database_path.as_posix()}"
+    return database_url
 
 
 class Settings(BaseSettings):
@@ -14,6 +24,8 @@ class Settings(BaseSettings):
     LLM_API_KEY: str = ""
     LLM_BASE_URL: str = "https://api.lmstudio.ai/v1"
     LLM_MODEL: str = "llama-3.3-70b-instruct"
+    LLM_TIMEOUT_SECONDS: float = Field(default=20.0, gt=0, le=120)
+    LLM_MAX_RETRIES: int = Field(default=1, ge=0, le=3)
 
     # Database
     DATABASE_URL: str = "sqlite:///./tickets.db"
@@ -27,7 +39,7 @@ class Settings(BaseSettings):
     IMAP_USER: Optional[str] = None
     IMAP_PASSWORD: Optional[str] = None
     EMAIL_POLL_INTERVAL: int = 60
-    INGEST_API_KEY: str = "demo-secret"
+    INGEST_API_KEY: str = ""
 
     # Email Sending (SMTP)
     SMTP_HOST: Optional[str] = None
