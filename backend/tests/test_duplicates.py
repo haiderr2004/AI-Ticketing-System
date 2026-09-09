@@ -1,6 +1,7 @@
 import pytest
 import chromadb
-from unittest.mock import patch, MagicMock
+from chromadb.config import Settings as ChromaSettings
+from unittest.mock import MagicMock
 import numpy as np
 
 from backend.services.duplicate_detector import check_for_duplicates
@@ -31,7 +32,9 @@ def setup_ephemeral_chromadb(monkeypatch):
     Replaces the persistent ChromaDB client with an in-memory (ephemeral) one
     for the duration of the tests. Also ensures we have a valid collection.
     """
-    client = chromadb.EphemeralClient()
+    client = chromadb.EphemeralClient(
+        settings=ChromaSettings(anonymized_telemetry=False, allow_reset=False)
+    )
     try:
         client.delete_collection("test_tickets")
     except Exception:
@@ -80,6 +83,24 @@ def test_identical_tickets_are_duplicates(mock_db_session):
     assert result.similarity_score is not None
     assert result.similarity_score >= 0.99
     assert "matches ticket #101" in result.explanation
+
+
+def test_embedding_store_does_not_duplicate_ticket_content(setup_ephemeral_chromadb):
+    add_ticket_embedding(
+        ticket_id=301,
+        title="Sensitive payroll issue",
+        description="Private ticket details must remain in the relational database.",
+        summary="Sensitive summary",
+    )
+
+    stored = setup_ephemeral_chromadb.get(
+        ids=["301"],
+        include=["documents", "metadatas"],
+    )
+
+    assert stored["ids"] == ["301"]
+    assert not stored["documents"] or all(value is None for value in stored["documents"])
+    assert not stored["metadatas"] or all(value is None for value in stored["metadatas"])
 
 def test_unrelated_tickets_are_not_duplicates(mock_db_session):
     add_ticket_embedding(ticket_id=102, title="VPN Broken", description="VPN drops every 5 minutes after KB5034441.", summary=None)

@@ -49,6 +49,8 @@ class Settings(BaseSettings):
     SMTP_FROM_EMAIL: Optional[str] = None
 
     # ChromaDB
+    EMBEDDINGS_ENABLED: bool = False
+    EMBEDDING_MODEL_PATH: str = ""
     CHROMADB_PATH: str = "./chroma_db"
     CHROMADB_COLLECTION: str = "tickets"
 

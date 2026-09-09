@@ -22,3 +22,7 @@ Docker Compose runs the migration as a one-shot service before starting the API 
 Stop the worker before database maintenance. If rollback is required, stop the worker and API, restore the database backup, deploy the previous application version, and only then restart services. Do not downgrade the migration while newer code is running.
 
 Relative SQLite URLs such as `sqlite:///./tickets.db` are resolved against the repository root, so the API, worker, and Alembic target the same file regardless of their current working directory.
+
+## Optional similarity search
+
+Ticket embeddings are disabled by default. Set `EMBEDDINGS_ENABLED=true` only when the approved local ChromaDB data store and model lifecycle are part of the deployment, and set `EMBEDDING_MODEL_PATH` to a pre-reviewed local model directory. Provider names and implicit model downloads are not supported. Chroma telemetry and reset operations remain disabled, and the vector store contains only derived embeddings keyed by ticket ID; ticket titles, descriptions, and summaries remain solely in the relational ticket database.

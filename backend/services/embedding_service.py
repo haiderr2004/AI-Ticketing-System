@@ -1,39 +1,60 @@
 import logging
 import os
-from typing import List, Tuple, Optional
-from sentence_transformers import SentenceTransformer
-import chromadb
-from chromadb.config import Settings as ChromaSettings
+from pathlib import Path
+from typing import Any, List, Optional, Tuple
+
 from backend.core.config import get_settings
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
-# Initialize SentenceTransformer model
-try:
-    model = SentenceTransformer('all-MiniLM-L6-v2')
-except Exception as e:
-    logger.error(f"Failed to load SentenceTransformer model: {e}")
-    model = None
+model: Any = None
+chroma_client: Any = None
+collection: Any = None
 
-# Initialize ChromaDB client
-try:
-    # Ensure directory exists
-    os.makedirs(settings.CHROMADB_PATH, exist_ok=True)
-    
-    chroma_client = chromadb.PersistentClient(
-        path=settings.CHROMADB_PATH,
-        settings=ChromaSettings(allow_reset=True)
-    )
-    
-    collection = chroma_client.get_or_create_collection(
-        name=settings.CHROMADB_COLLECTION,
-        metadata={"hnsw:space": "cosine"}
-    )
-except Exception as e:
-    logger.error(f"Failed to initialize ChromaDB: {e}")
-    chroma_client = None
-    collection = None
+
+def _initialize_embedding_backend() -> None:
+    """Initialize the optional local embedding backend without network telemetry."""
+    global model, chroma_client, collection
+
+    if not settings.EMBEDDINGS_ENABLED:
+        logger.info("Ticket embeddings are disabled.")
+        return
+
+    try:
+        model_path = Path(settings.EMBEDDING_MODEL_PATH).expanduser()
+        if not settings.EMBEDDING_MODEL_PATH or not model_path.is_dir():
+            logger.error(
+                "Embeddings are enabled but EMBEDDING_MODEL_PATH is not a valid local directory."
+            )
+            return
+
+        import chromadb
+        from chromadb.config import Settings as ChromaSettings
+        from sentence_transformers import SentenceTransformer
+
+        os.makedirs(settings.CHROMADB_PATH, exist_ok=True)
+        model = SentenceTransformer(str(model_path.resolve()))
+        chroma_client = chromadb.PersistentClient(
+            path=settings.CHROMADB_PATH,
+            settings=ChromaSettings(
+                allow_reset=False,
+                anonymized_telemetry=False,
+            ),
+        )
+        collection = chroma_client.get_or_create_collection(
+            name=settings.CHROMADB_COLLECTION,
+            metadata={"hnsw:space": "cosine"},
+        )
+    except Exception:
+        logger.error("Failed to initialize the optional embedding backend.")
+        model = None
+        chroma_client = None
+        collection = None
+
+
+_initialize_embedding_backend()
+
 
 def _get_combined_text(title: str, description: str, summary: Optional[str] = None) -> str:
     parts = [f"Title: {title}", f"Description: {description}"]
@@ -41,12 +62,18 @@ def _get_combined_text(title: str, description: str, summary: Optional[str] = No
         parts.append(f"Summary: {summary}")
     return "\n".join(parts)
 
-def add_ticket_embedding(ticket_id: int, title: str, description: str, summary: Optional[str] = None):
+
+def add_ticket_embedding(
+    ticket_id: int,
+    title: str,
+    description: str,
+    summary: Optional[str] = None,
+) -> None:
     """
     Generates embedding for a ticket and stores it in ChromaDB.
     """
     if model is None or collection is None:
-        logger.warning(f"Embedding service not fully initialized. model={model}, collection={collection}. Skipping add_ticket_embedding.")
+        logger.debug("Skipping ticket embedding because the embedding backend is unavailable.")
         return
 
     text = _get_combined_text(title, description, summary)
@@ -54,22 +81,28 @@ def add_ticket_embedding(ticket_id: int, title: str, description: str, summary: 
     try:
         embedding = model.encode(text).tolist()  # type: ignore
         
-        collection.add(
+        # Persist only the derived vector and opaque ticket ID. The relational
+        # database remains the sole store for ticket title, body, and summary.
+        collection.upsert(
             ids=[str(ticket_id)],
             embeddings=[embedding],
-            metadatas=[{"title": title, "summary": summary or ""}],
-            documents=[text]
         )
-    except Exception as e:
-        logger.error(f"Failed to add embedding for ticket {ticket_id}: {e}")
+    except Exception:
+        logger.error("Failed to store the embedding for ticket %s.", ticket_id)
 
-def find_similar_tickets(title: str, description: str, top_k: int = 5, exclude_id: Optional[int] = None) -> List[Tuple[int, float]]:
+
+def find_similar_tickets(
+    title: str,
+    description: str,
+    top_k: int = 5,
+    exclude_id: Optional[int] = None,
+) -> List[Tuple[int, float]]:
     """
     Searches ChromaDB for the most semantically similar tickets.
     Returns list of tuples: (ticket_id, similarity_score).
     """
     if model is None or collection is None:
-        logger.warning(f"Embedding service not fully initialized. model={model}, collection={collection}. Skipping find_similar_tickets.")
+        logger.debug("Skipping similarity search because the embedding backend is unavailable.")
         return []
 
     text = _get_combined_text(title, description)
@@ -103,11 +136,12 @@ def find_similar_tickets(title: str, description: str, top_k: int = 5, exclude_i
                     break
                     
         return similar_tickets
-    except Exception as e:
-        logger.error(f"Failed to find similar tickets: {e}")
+    except Exception:
+        logger.error("Failed to search ticket embeddings.")
         return []
 
-def remove_ticket_embedding(ticket_id: int):
+
+def remove_ticket_embedding(ticket_id: int) -> None:
     """
     Deletes a ticket's embedding from ChromaDB.
     """
@@ -116,5 +150,5 @@ def remove_ticket_embedding(ticket_id: int):
         
     try:
         collection.delete(ids=[str(ticket_id)])
-    except Exception as e:
-        logger.error(f"Failed to remove embedding for ticket {ticket_id}: {e}")
+    except Exception:
+        logger.error("Failed to remove the embedding for ticket %s.", ticket_id)
